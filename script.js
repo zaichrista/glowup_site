@@ -530,7 +530,7 @@ function renderHabitBoard() {
   board.querySelectorAll("[data-open-event]").forEach(button => button.addEventListener("click", () => openEventDetail(button.dataset.openEvent)));
   board.querySelectorAll("[data-edit-ritual]").forEach(button => button.addEventListener("click", () => openRitualEditor(button.dataset.editRitual)));
   board.querySelectorAll("[data-pause-ritual]").forEach(button => button.addEventListener("click", () => toggleCustomRitualPause(button.dataset.pauseRitual)));
-  board.querySelectorAll("[data-delete-ritual]").forEach(button => button.addEventListener("click", () => deleteCustomRitual(button.dataset.deleteRitual)));
+  board.querySelectorAll("[data-delete-ritual]").forEach(button => button.addEventListener("click", () => requestRitualDelete("glow", button.dataset.deleteRitual)));
   bindCursorLabels();
 }
 function renderHabitCard(habit) {
@@ -884,6 +884,31 @@ function toggleCustomRitualPause(id) {
   item.paused = !item.paused;
   syncCustomRituals();
   renderAll();
+}
+let pendingRitualDelete = null;
+function requestRitualDelete(mode, id) {
+  const source = mode === "work"
+    ? customWorkTasks.find(task => task.id === id)
+    : habits.find(ritual => ritual.id === id) || baseHabits.find(ritual => ritual.id === id) || customRituals.find(ritual => ritual.id === id);
+  if (!source) return;
+  pendingRitualDelete = { mode, id };
+  document.getElementById("deleteRitualConfirmLabel").textContent = mode === "work" ? "Blue archive protection" : "Ritual protection";
+  document.getElementById("deleteRitualConfirmTitle").textContent = mode === "work" ? "Delete this work task?" : "Delete this ritual?";
+  document.getElementById("deleteRitualConfirmCopy").textContent = `"${source.title}" will leave the active archive. Your past completions stay in history, but this card will no longer appear.`;
+  document.getElementById("deleteRitualConfirmModal").hidden = false;
+  document.body.classList.add("modal-locked");
+}
+function closeRitualDeleteConfirm() {
+  pendingRitualDelete = null;
+  document.getElementById("deleteRitualConfirmModal").hidden = true;
+  document.body.classList.remove("modal-locked");
+}
+function confirmRitualDelete() {
+  if (!pendingRitualDelete) return;
+  const { mode, id } = pendingRitualDelete;
+  closeRitualDeleteConfirm();
+  if (mode === "work") updateCustomWorkTask(id, "delete");
+  else deleteCustomRitual(id);
 }
 function deleteCustomRitual(id) {
   const item = customRituals.find(ritual => ritual.id === id);
@@ -1427,7 +1452,7 @@ function renderWorkBoard() {
   board.querySelectorAll("[data-work-task-id]").forEach(button => button.addEventListener("click", () => toggleWorkTask(button.dataset.workTaskId)));
   board.querySelectorAll("[data-edit-work-task]").forEach(button => button.addEventListener("click", () => openWorkTaskEditor(button.dataset.editWorkTask)));
   board.querySelectorAll("[data-pause-work-task]").forEach(button => button.addEventListener("click", () => updateCustomWorkTask(button.dataset.pauseWorkTask, "pause")));
-  board.querySelectorAll("[data-delete-work-task]").forEach(button => button.addEventListener("click", () => updateCustomWorkTask(button.dataset.deleteWorkTask, "delete")));
+  board.querySelectorAll("[data-delete-work-task]").forEach(button => button.addEventListener("click", () => requestRitualDelete("work", button.dataset.deleteWorkTask)));
 }
 function renderWorkSummary() {
   const active = activeWorkTasks();
@@ -1703,6 +1728,12 @@ document.getElementById("trackerNext")?.addEventListener("click", () => moveTrac
 document.getElementById("trackerToday")?.addEventListener("click", () => { trackerDate = new Date(); if (trackerView === "archive") trackerView = "week"; renderTracker(); });
 document.getElementById("levelModalClose")?.addEventListener("click", () => document.getElementById("levelModal").hidden = true);
 document.getElementById("levelModal")?.addEventListener("click", event => { if (event.target.id === "levelModal") event.currentTarget.hidden = true; });
+document.getElementById("deleteRitualCancel")?.addEventListener("click", closeRitualDeleteConfirm);
+document.getElementById("deleteRitualCancelX")?.addEventListener("click", closeRitualDeleteConfirm);
+document.getElementById("deleteRitualConfirm")?.addEventListener("click", confirmRitualDelete);
+document.getElementById("deleteRitualConfirmModal")?.addEventListener("click", event => {
+  if (event.target.id === "deleteRitualConfirmModal") closeRitualDeleteConfirm();
+});
 document.addEventListener("keydown", event => {
   if (activeMandatoryModal) {
     if (event.key === "Escape") event.preventDefault();
@@ -1722,6 +1753,7 @@ document.addEventListener("keydown", event => {
     return;
   }
   if (event.key === "Escape" && !document.getElementById("habitUpdateModal").hidden) closeOptionalHabitUpdate();
+  if (event.key === "Escape" && !document.getElementById("deleteRitualConfirmModal").hidden) closeRitualDeleteConfirm();
 });
 const resetBtn = document.getElementById("resetBtn");
 resetBtn?.addEventListener("mousedown", startResetHold);

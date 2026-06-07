@@ -3118,3 +3118,78 @@ body.time-night.mode-calendar .calendar-time-slot { background: rgba(255,255,255
   .command-habit-copy, .habit-card p { font-size: 9px; }
   .calendar-view-container, .tracker-scroll { max-width: calc(100vw - 14px); }
 }
+
+.delete-confirm-card {
+  width: min(560px, 100%);
+  text-align: center;
+  border-color: rgba(90,24,48,.28);
+  background:
+    radial-gradient(circle at 50% 0, rgba(247,199,217,.38), transparent 48%),
+    var(--pearl);
+}
+
+.delete-confirm-card h2 { margin: 12px 0; color: var(--oxblood); }
+.delete-confirm-card > p:not(.section-label) {
+  margin: 0 auto;
+  max-width: 440px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.delete-confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.delete-confirm-actions button { width: 100%; margin: 0; }
+
+@media (max-width: 700px) {
+  .site-header {
+    padding: 7px 8px;
+    padding-top: max(7px, env(safe-area-inset-top));
+  }
+
+  .nav, .nav[hidden] { display: none !important; }
+
+  .mode-switcher {
+    gap: 6px;
+    padding: 5px;
+  }
+
+  .mode-switch {
+    min-height: 48px;
+    padding: 8px 6px;
+    border-radius: 999px;
+  }
+
+  .mode-switch strong {
+    font: 700 11px/1.1 Inter, sans-serif;
+    letter-spacing: 0;
+  }
+
+  .mode-switch small {
+    display: block;
+    margin-top: 3px;
+    font: 500 7px/1.1 "IBM Plex Mono", monospace;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+  }
+
+  .hero, .work-hero, .calendar-hero { padding-top: 92px; }
+  html { scroll-padding-top: 78px; }
+  .habit-filters, .calendar-filter-rail { top: 68px; }
+
+  .delete-confirm-card {
+    width: min(100%, 440px);
+    padding: 28px 14px;
+  }
+
+  .delete-confirm-actions {
+    grid-template-columns: 1fr;
+    margin-top: 20px;
+  }
+
+  .delete-confirm-actions button { min-height: 44px; }
+}

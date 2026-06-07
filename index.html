@@ -618,6 +618,19 @@
     </div>
   </div>
 
+  <div class="atelier-modal delete-confirm-modal" id="deleteRitualConfirmModal" hidden role="dialog" aria-modal="true" aria-labelledby="deleteRitualConfirmTitle">
+    <div class="atelier-form atelier-form--ritual delete-confirm-card">
+      <button class="checkin-close" type="button" id="deleteRitualCancelX" aria-label="Cancel delete">×</button>
+      <p class="section-label" id="deleteRitualConfirmLabel">Ritual protection</p>
+      <h2 id="deleteRitualConfirmTitle">Are you sure?</h2>
+      <p id="deleteRitualConfirmCopy">This ritual will leave the active archive.</p>
+      <div class="delete-confirm-actions">
+        <button class="secondary-btn" type="button" id="deleteRitualCancel">Keep the ritual</button>
+        <button class="danger-btn" type="button" id="deleteRitualConfirm">Yes, delete it</button>
+      </div>
+    </div>
+  </div>
+
   <div class="atelier-modal" id="calendarScheduleModal" hidden role="dialog" aria-modal="true" aria-labelledby="calendarScheduleTitle">
     <form class="atelier-form atelier-form--calendar" id="calendarScheduleForm">
       <button class="checkin-close" type="button" id="calendarScheduleClose">×</button>
