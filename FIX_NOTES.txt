@@ -1,0 +1,9 @@
+Zai Glow-Up Command Centre - fixed files
+
+Fixes made:
+1. Removed an orphaned duplicate calendar day-view code block in script.js that caused:
+   SyntaxError: Unexpected token '}'
+2. Added a small loader safety net so a non-critical startup issue cannot leave the website trapped behind the decorative loader.
+3. Preserved the mandatory morning/evening check-in logic, localStorage keys, styling, and all current website structure.
+
+Replace your current index.html, style.css, and script.js with these three files.

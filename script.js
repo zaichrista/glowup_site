@@ -1461,7 +1461,8 @@ function prepareModePieces(page, phase) {
     ".hero-copy > *", ".hero-pie-card", ".hero-bottom-note",
     ".section-head > *", ".summary-tile", ".work-level-card", ".score-card",
     ".habit-filters", ".life-category-head", ".command-habit",
-    ".tracker-toolbar", ".tracker-block", ".next-dday", ".event-card", ".review-card"
+    ".tracker-toolbar", ".tracker-block", ".next-dday", ".event-card", ".review-card",
+    ".calendar-hero > *", ".calendar-summary > *", ".calendar-filter-rail", ".calendar-sidebar", ".calendar-main-content"
   ].join(",");
   const pieces = [...page.querySelectorAll(selectors)].filter(element => {
     const rect = element.getBoundingClientRect();
@@ -1492,8 +1493,9 @@ function clearModePieces(pieces) {
 function switchMode(mode) {
   if (mode === currentMode || document.body.classList.contains("mode-transitioning")) return;
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const outgoing = document.getElementById(currentMode === "glow" ? "glowMode" : "workMode");
-  const incoming = document.getElementById(mode === "glow" ? "glowMode" : "workMode");
+  const pages = { glow: "glowMode", work: "workMode", calendar: "calendarMode" };
+  const outgoing = document.getElementById(pages[currentMode]);
+  const incoming = document.getElementById(pages[mode]);
   const leavingPieces = reduced ? [] : prepareModePieces(outgoing, "mode-piece--leaving");
   document.body.classList.add("mode-transitioning", "mode-deconstructing", `transition-to-${mode}`);
   setTimeout(() => {
@@ -1501,14 +1503,16 @@ function switchMode(mode) {
       currentMode = mode;
       document.body.classList.toggle("mode-glow", mode === "glow");
       document.body.classList.toggle("mode-work", mode === "work");
-      document.getElementById("glowMode").hidden = mode !== "glow";
-      document.getElementById("workMode").hidden = mode !== "work";
+      document.body.classList.toggle("mode-calendar", mode === "calendar");
+      Object.entries(pages).forEach(([key, id]) => document.getElementById(id).hidden = key !== mode);
       document.querySelector(".glow-nav").hidden = mode !== "glow";
       document.querySelector(".work-nav").hidden = mode !== "work";
       document.querySelectorAll(".mode-switch").forEach(button => button.classList.toggle("active", button.dataset.mode === mode));
-      document.querySelector(".brand em").textContent = mode === "glow" ? "Glow-Up" : "Work Atelier";
-      document.getElementById("streakHeader").textContent = mode === "glow" ? `Streak ${state.streak || 0}` : `Work ${workState.totalTicks} filed`;
-      if (mode === "work") renderWorkAll(); else renderAll();
+      document.querySelector(".brand em").textContent = mode === "glow" ? "Glow-Up" : mode === "work" ? "Work Atelier" : "Archive Calendar";
+      document.getElementById("streakHeader").textContent = mode === "glow" ? `Streak ${state.streak || 0}` : mode === "work" ? `Work ${workState.totalTicks} filed` : "Whole life view";
+      if (mode === "work") renderWorkAll();
+      else if (mode === "calendar") renderCalendarView();
+      else renderAll();
       forcePageTop();
       clearModePieces(leavingPieces);
       document.body.classList.remove("mode-deconstructing");
@@ -1645,6 +1649,15 @@ function releaseLoader() {
   setTimeout(() => { loaderLines[1]?.classList.remove("active"); loaderMark?.classList.add("active"); }, 1850);
   setTimeout(() => loader?.classList.add("hide"), 2850);
 }
+
+// Safety net: if a non-critical startup feature fails before the check-in system
+// can show, do not let the decorative loader permanently block the website.
+setTimeout(() => {
+  const visibleMandatoryModal = document.querySelector(".checkin-modal:not([hidden])");
+  if (!visibleMandatoryModal && loader && !loader.classList.contains("hide")) {
+    loader.classList.add("hide");
+  }
+}, 6500);
 document.getElementById("todayDate").textContent = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
 document.getElementById("completeDayBtn")?.addEventListener("click", completeDay);
@@ -1688,30 +1701,77 @@ let calendarItems = loadCollection(CALENDAR_ITEMS_KEY);
 let calendarScheduleOverrides = loadRecords(CALENDAR_SCHEDULE_OVERRIDES_KEY);
 let calendarItemCompletions = loadRecords(CALENDAR_COMPLETIONS_KEY);
 let calendarDayNotes = loadRecords(CALENDAR_DAY_NOTES_KEY);
-let calendarCurrentView = "month";
+let calendarCurrentView = "week";
 let calendarCurrentDate = new Date();
+let calendarFilter = "all";
 let visibleCategories = {
-  glow: new Set(["body", "waist", "glutes", "posture", "hair", "beauty", "food", "water", "sleep", "soul"]),
-  work: new Set(["study", "jobs", "portfolio", "creativeWork", "client", "brand", "adminWork", "skills"])
+  glow: new Set(["body", "waist", "glutes", "posture", "hair", "beauty", "food", "water", "sleep", "soul", "social"]),
+  work: new Set(["study", "jobs", "portfolio", "creativeWork", "client", "brand", "adminWork", "skills", "networking"])
 };
 
+function calendarOccurrence(task, date, sourceType) {
+  if (!task || task.frequency === "daily" || task.calendarVisible === false) return null;
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const recurringSchedule = calendarScheduleOverrides[`${sourceType}:${task.id}:schedule`] || {};
+  const preferredDay = recurringSchedule.preferredDay ?? task.preferredDay ?? 0;
+  const preferredDayOfMonth = recurringSchedule.preferredDayOfMonth ?? task.preferredDayOfMonth ?? 1;
+  const movedOverride = Object.entries(calendarScheduleOverrides).find(([key, override]) => key.startsWith(`${sourceType}:${task.id}:`) && override?.date === dateKey(target) && override.calendarVisible !== false);
+  if (movedOverride) {
+    return { occurrenceKey: movedOverride[0].split(":").pop(), overrideKey: movedOverride[0], time: movedOverride[1].time || task.scheduledTime || null };
+  }
+  let occurrenceKey = "";
+  let scheduledDate = null;
+  if (task.frequency === "weekly") {
+    const start = startOfWeek(target);
+    occurrenceKey = dateKey(start);
+    scheduledDate = addDays(start, Number(preferredDay));
+  } else if (task.frequency === "biweekly" || task.frequency === "custom") {
+    const [start] = periodRange(task, target);
+    occurrenceKey = dateKey(start);
+    scheduledDate = addDays(start, Number(preferredDay));
+  } else if (task.frequency === "monthly") {
+    const start = new Date(target.getFullYear(), target.getMonth(), 1);
+    occurrenceKey = dateKey(start);
+    const day = Math.min(Number(preferredDayOfMonth), new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate());
+    scheduledDate = new Date(target.getFullYear(), target.getMonth(), day);
+  } else if (task.frequency === "one-time") {
+    const raw = task.deadline || task.startDate || (task.createdAt ? dateKey(new Date(task.createdAt)) : "");
+    if (!raw) return null;
+    occurrenceKey = raw;
+    scheduledDate = parseDate(raw);
+  } else return null;
+  const overrideKey = `${sourceType}:${task.id}:${occurrenceKey}`;
+  const override = calendarScheduleOverrides[overrideKey];
+  if (override?.calendarVisible === false) return null;
+  const finalDate = override?.date ? parseDate(override.date) : scheduledDate;
+  if (dateKey(finalDate) !== dateKey(target)) return null;
+  return { occurrenceKey, overrideKey, time: override?.time || task.scheduledTime || null };
+}
+function passesCalendarFilter(item) {
+  if (calendarFilter === "all") return true;
+  if (calendarFilter === "glow") return item.mode === "glow";
+  if (calendarFilter === "work") return item.mode === "work";
+  if (calendarFilter === "events") return item.sourceType === "glow-event";
+  if (calendarFilter === "deadlines") return item.sourceType === "work-event";
+  return calendarFilter === "rituals" && ["glow-ritual", "work-task"].includes(item.sourceType);
+}
 function getAllCalendarItems(date = new Date()) {
   const items = [];
   const today = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   
-  // Collect glow rituals and habits
   activeHabits().forEach(habit => {
     if (!visibleCategories.glow.has(habit.category)) return;
-    const [start, end] = periodRange(habit, today);
-    if (today >= start && today <= end) {
+    const occurrence = calendarOccurrence(habit, today, "glow-ritual");
+    if (occurrence) {
       items.push({
-        id: `glow-ritual-${habit.id}`,
+        id: `glow-ritual-${habit.id}-${occurrence.occurrenceKey}`,
         sourceId: habit.id,
         sourceType: "glow-ritual",
+        occurrenceKey: occurrence.occurrenceKey,
         title: habit.title,
         category: habit.category,
         date: dateKey(today),
-        time: null,
+        time: occurrence.time,
         type: "ritual",
         mode: "glow",
         icon: categoryMeta[habit.category]?.icon || "♡",
@@ -1722,19 +1782,19 @@ function getAllCalendarItems(date = new Date()) {
     }
   });
 
-  // Collect work tasks
   (workTasks || []).forEach(task => {
     if (!visibleCategories.work.has(task.category)) return;
-    const [start, end] = periodRange(task, today);
-    if (today >= start && today <= end) {
+    const occurrence = calendarOccurrence(task, today, "work-task");
+    if (occurrence) {
       items.push({
-        id: `work-task-${task.id}`,
+        id: `work-task-${task.id}-${occurrence.occurrenceKey}`,
         sourceId: task.id,
         sourceType: "work-task",
+        occurrenceKey: occurrence.occurrenceKey,
         title: task.title,
         category: task.category,
         date: dateKey(today),
-        time: null,
+        time: occurrence.time,
         type: "task",
         mode: "work",
         icon: workCategoryMeta[task.category]?.icon || "§",
@@ -1745,7 +1805,6 @@ function getAllCalendarItems(date = new Date()) {
     }
   });
 
-  // Collect glow events
   (events || []).forEach(event => {
     if (event.status !== "archived" && event.date === dateKey(today)) {
       items.push({
@@ -1756,7 +1815,7 @@ function getAllCalendarItems(date = new Date()) {
         category: event.category,
         date: dateKey(today),
         time: null,
-        type: "event",
+        type: "dday",
         mode: "glow",
         icon: "✦",
         countdown: daysUntil(event.date),
@@ -1766,7 +1825,6 @@ function getAllCalendarItems(date = new Date()) {
     }
   });
 
-  // Collect work events
   (workEvents || []).forEach(event => {
     if (event.status !== "archived" && event.date === dateKey(today)) {
       items.push({
@@ -1786,9 +1844,15 @@ function getAllCalendarItems(date = new Date()) {
     }
   });
 
-  // Collect calendar-only items
   (calendarItems || []).forEach(item => {
-    if (item.date === dateKey(today)) {
+    const start = item.date ? parseDate(item.date) : null;
+    if (!start || item.recurrence === "daily") return;
+    const elapsed = Math.floor((today - start) / 86400000);
+    const occurs = item.recurrence === "weekly" ? elapsed >= 0 && elapsed % 7 === 0
+      : item.recurrence === "biweekly" ? elapsed >= 0 && elapsed % 14 === 0
+      : item.recurrence === "monthly" ? today >= start && today.getDate() === start.getDate()
+      : item.date === dateKey(today);
+    if (occurs) {
       items.push({
         id: `calendar-${item.id}`,
         sourceId: item.id,
@@ -1807,7 +1871,7 @@ function getAllCalendarItems(date = new Date()) {
     }
   });
 
-  return items;
+  return items.filter(passesCalendarFilter).sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
 }
 
 function renderCalendarView() {
@@ -1822,6 +1886,31 @@ function renderCalendarView() {
     renderCalendarDay(container);
   }
   updateCalendarPeriodLabel();
+  renderCalendarSummary();
+}
+function calendarItemMarkup(item, compact = false) {
+  const eventBadge = item.countdown === 0 ? "today" : item.countdown > 0 ? `${item.countdown} days` : "passed";
+  const badge = item.sourceType === "glow-event" ? `D-Day · ${eventBadge}` : item.sourceType === "work-event" ? `Deadline · ${eventBadge}` : item.frequency ? frequencyLabel(item.frequency) : item.type;
+  const compactMeta = ["glow-event", "work-event"].includes(item.sourceType) ? `<small>${escapeHTML(String(badge))}</small>` : "";
+  return `<button class="calendar-item calendar-item--${item.sourceType} ${item.mode} ${item.isCompleted ? "completed" : ""}" data-calendar-item-id="${item.id}" data-calendar-date="${item.date}" draggable="true" type="button"><span class="item-icon">${item.icon}</span><span class="item-content"><strong>${escapeHTML(item.title)}</strong>${compact ? compactMeta : `<small>${item.time || "Anytime"} · ${escapeHTML(String(badge || ""))}</small>`}</span></button>`;
+}
+function renderCalendarSummary() {
+  const summary = document.getElementById("calendarSummary");
+  if (!summary) return;
+  const todayItems = getAllCalendarItems(new Date());
+  const weekStart = startOfWeek(new Date());
+  const weekItems = Array.from({ length: 7 }, (_, index) => getAllCalendarItems(addDays(weekStart, index))).flat();
+  const nextGlow = events.filter(event => event.status !== "archived" && daysUntil(event.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const nextWork = workEvents.filter(event => event.status !== "archived" && daysUntil(event.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const cards = [
+    ["Scheduled today", todayItems.length],
+    ["This week’s deadlines", weekItems.filter(item => item.sourceType === "work-event").length],
+    ["Next D-Day", nextGlow?.name || "Nothing filed"],
+    ["Next work deadline", nextWork?.name || "Nothing filed"],
+    ["Completed today", todayItems.filter(item => item.isCompleted).length],
+    ["Open rituals & tasks", todayItems.filter(item => !item.isCompleted && ["glow-ritual", "work-task"].includes(item.sourceType)).length]
+  ];
+  summary.innerHTML = cards.map(([label, value]) => `<article class="summary-tile"><span>${label}</span><strong>${escapeHTML(String(value))}</strong></article>`).join("");
 }
 
 function renderCalendarDay(container) {
@@ -1859,14 +1948,11 @@ function renderCalendarDay(container) {
   Object.entries(timeSlots).forEach(([slot, slotItems]) => {
     if (slotItems.length === 0) return;
     html += `
-      <div class="calendar-time-slot">
+      <div class="calendar-time-slot" data-calendar-drop-date="${dateKey(date)}">
         <div class="slot-title">${slot}</div>
         <div class="slot-items">
           ${slotItems.map(item => `
-            <div class="calendar-item ${item.mode}" title="${item.title}">
-              ${item.icon} ${item.title}
-              ${item.time ? `<small>${item.time}</small>` : ''}
-            </div>
+            ${calendarItemMarkup(item)}
           `).join('')}
         </div>
       </div>
@@ -1878,57 +1964,6 @@ function renderCalendarDay(container) {
   attachCalendarEventListeners();
 }
   
-  const timeSlots = {
-    "morning": [],
-    "midday": [],
-    "afternoon": [],
-    "evening": [],
-    "night": [],
-    "anytime": []
-  };
-
-  items.forEach(item => {
-    if (!item.time) {
-      timeSlots.anytime.push(item);
-    } else {
-      const hour = parseInt(item.time.split(":")[0]);
-      if (hour < 12) timeSlots.morning.push(item);
-      else if (hour < 14) timeSlots.midday.push(item);
-      else if (hour < 17) timeSlots.afternoon.push(item);
-      else if (hour < 20) timeSlots.evening.push(item);
-      else timeSlots.night.push(item);
-    }
-  });
-
-  const html = `
-    <div class="calendar-day-view">
-      <div class="calendar-date-header">${new Date(date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
-      ${Object.entries(timeSlots).map(([slot, slotItems]) => {
-        if (slotItems.length === 0) return "";
-        return `
-          <div class="calendar-time-slot">
-            <h4 class="slot-title">${slot.charAt(0).toUpperCase() + slot.slice(1)}</h4>
-            <div class="slot-items">
-              ${slotItems.map(item => `
-                <div class="calendar-item ${item.mode} ${item.isCompleted ? "completed" : ""}" data-item-id="${item.id}">
-                  <span class="item-icon">${item.icon}</span>
-                  <div class="item-content">
-                    <strong>${item.title}</strong>
-                    ${item.time ? `<small>${item.time}</small>` : ""}
-                  </div>
-                  <button class="item-checkbox" data-toggle-calendar-item="${item.id}"></button>
-                </div>
-              `).join("")}
-            </div>
-          </div>
-        `;
-      }).join("")}
-    </div>
-  `;
-  
-  container.innerHTML = html;
-  attachCalendarEventListeners();
-}
 
 function renderCalendarWeek(container) {
   const start = startOfWeek(calendarCurrentDate);
@@ -1941,16 +1976,14 @@ function renderCalendarWeek(container) {
     const dayName = day.toLocaleDateString("en-US", { weekday: "short" });
     
     html += `
-      <div class="calendar-day-column">
+      <div class="calendar-day-column" data-calendar-drop-date="${dateKey(day)}">
         <div class="day-header">
           <div class="day-label">${dayName}</div>
           <div class="day-date">${day.getDate()}</div>
         </div>
         <div class="day-items">
           ${items.map(item => `
-            <div class="calendar-item ${item.mode}" title="${item.title}">
-              ${item.icon} ${item.title}
-            </div>
+            ${calendarItemMarkup(item)}
           `).join('')}
         </div>
       </div>
@@ -1988,13 +2021,11 @@ function renderCalendarMonth(container) {
       const dayKey = dateKey(currentDate);
       
       html += `
-        <td class="calendar-month-day ${!isCurrentMonth ? 'other-month' : ''}" data-date="${dayKey}">
+        <td class="calendar-month-day ${!isCurrentMonth ? 'other-month' : ''}" data-date="${dayKey}" data-calendar-drop-date="${dayKey}">
           <div class="day-number">${currentDate.getDate()}</div>
           <div class="day-items-preview">
             ${items.slice(0, 3).map(item => `
-              <div class="calendar-item ${item.mode}" title="${item.title}">
-                ${item.icon} ${item.title}
-              </div>
+              ${calendarItemMarkup(item, true)}
             `).join('')}
             ${items.length > 3 ? `<div class="item-more">+${items.length - 3}</div>` : ''}
           </div>
@@ -2025,10 +2056,129 @@ function updateCalendarPeriodLabel() {
   }
 }
 
+let draggedCalendarItem = null;
+function moveCalendarItemToDate(item, targetDate) {
+  if (!item || !targetDate || item.date === targetDate) return;
+  let recurringRuleChanged = false;
+  if (["glow-ritual", "work-task"].includes(item.sourceType)) {
+    const collection = item.sourceType === "glow-ritual" ? habits : workTasks;
+    const source = collection.find(entry => entry.id === item.sourceId);
+    if (source && ["weekly", "biweekly", "custom"].includes(source.frequency)) {
+      source.preferredDay = (parseDate(targetDate).getDay() + 6) % 7;
+      clearCalendarOccurrenceOverrides(item.sourceType, item.sourceId);
+      persistScheduledSource(item.sourceType, source);
+      recurringRuleChanged = true;
+    } else if (source?.frequency === "monthly") {
+      source.preferredDayOfMonth = parseDate(targetDate).getDate();
+      clearCalendarOccurrenceOverrides(item.sourceType, item.sourceId);
+      persistScheduledSource(item.sourceType, source);
+      recurringRuleChanged = true;
+    } else {
+      const key = `${item.sourceType}:${item.sourceId}:${item.occurrenceKey}`;
+      calendarScheduleOverrides[key] = {
+        ...(calendarScheduleOverrides[key] || {}),
+        itemId: item.sourceId,
+        sourceType: item.sourceType,
+        date: targetDate,
+        time: item.time || "",
+        calendarVisible: true,
+        updatedAt: new Date().toISOString()
+      };
+    }
+    localStorage.setItem(CALENDAR_SCHEDULE_OVERRIDES_KEY, JSON.stringify(calendarScheduleOverrides));
+  } else if (item.sourceType === "glow-event") {
+    const event = events.find(entry => entry.id === item.sourceId);
+    if (event) {
+      event.date = targetDate;
+      saveCollection(EVENTS_KEY, events);
+    }
+  } else if (item.sourceType === "work-event") {
+    const event = workEvents.find(entry => entry.id === item.sourceId);
+    if (event) {
+      event.date = targetDate;
+      saveCollection(WORK_EVENTS_KEY, workEvents);
+    }
+  } else if (item.sourceType === "calendar-item") {
+    const calendarItem = calendarItems.find(entry => entry.id === item.sourceId);
+    if (calendarItem) {
+      calendarItem.date = targetDate;
+      saveCollection(CALENDAR_ITEMS_KEY, calendarItems);
+    }
+  }
+  document.body.classList.remove("calendar-is-dragging");
+  document.querySelectorAll(".calendar-drop-active").forEach(target => target.classList.remove("calendar-drop-active"));
+  draggedCalendarItem = null;
+  renderCalendarView();
+  renderEvents();
+  renderWorkEvents();
+  const destination = parseDate(targetDate).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+  showToast(recurringRuleChanged ? `${item.title} will now follow ${destination}.` : `${item.title} moved to ${destination}.`);
+}
+function clearCalendarOccurrenceOverrides(sourceType, sourceId) {
+  Object.keys(calendarScheduleOverrides).forEach(key => {
+    if (key.startsWith(`${sourceType}:${sourceId}:`)) delete calendarScheduleOverrides[key];
+  });
+}
+function persistScheduledSource(sourceType, source) {
+  if (sourceType === "glow-ritual" && source.custom) {
+    const custom = customRituals.find(item => item.id === source.id);
+    if (custom) Object.assign(custom, { preferredDay: source.preferredDay, preferredDayOfMonth: source.preferredDayOfMonth });
+    saveCollection(CUSTOM_RITUALS_KEY, customRituals);
+  } else if (sourceType === "work-task") {
+    const custom = customWorkTasks.find(item => item.id === source.id);
+    if (custom) Object.assign(custom, { preferredDay: source.preferredDay, preferredDayOfMonth: source.preferredDayOfMonth });
+    else {
+      const scheduleKey = `work-task:${source.id}:schedule`;
+      calendarScheduleOverrides[scheduleKey] = { itemId: source.id, sourceType, preferredDay: source.preferredDay, preferredDayOfMonth: source.preferredDayOfMonth, calendarVisible: true, updatedAt: new Date().toISOString() };
+    }
+    saveCollection(WORK_TASKS_KEY, customWorkTasks);
+  } else {
+    const scheduleKey = `glow-ritual:${source.id}:schedule`;
+    calendarScheduleOverrides[scheduleKey] = { itemId: source.id, sourceType, preferredDay: source.preferredDay, preferredDayOfMonth: source.preferredDayOfMonth, calendarVisible: true, updatedAt: new Date().toISOString() };
+  }
+}
 function attachCalendarEventListeners() {
-  document.querySelectorAll(".calendar-item").forEach(item => {
-    item.addEventListener("click", (e) => {
-      // Could open detail modal here if needed
+  document.querySelectorAll("[data-calendar-item-id]").forEach(element => {
+    element.addEventListener("click", event => {
+      event.stopPropagation();
+      if (element.dataset.justDragged === "true") {
+        element.dataset.justDragged = "false";
+        return;
+      }
+      const item = getAllCalendarItems(parseDate(element.dataset.calendarDate)).find(entry => entry.id === element.dataset.calendarItemId);
+      if (item) openCalendarItemDetail(item);
+    });
+    element.addEventListener("dragstart", event => {
+      draggedCalendarItem = getAllCalendarItems(parseDate(element.dataset.calendarDate)).find(entry => entry.id === element.dataset.calendarItemId);
+      element.classList.add("is-dragging");
+      document.body.classList.add("calendar-is-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", element.dataset.calendarItemId);
+    });
+    element.addEventListener("dragend", () => {
+      element.classList.remove("is-dragging");
+      element.dataset.justDragged = "true";
+      document.body.classList.remove("calendar-is-dragging");
+      document.querySelectorAll(".calendar-drop-active").forEach(target => target.classList.remove("calendar-drop-active"));
+      draggedCalendarItem = null;
+      setTimeout(() => { element.dataset.justDragged = "false"; }, 200);
+    });
+  });
+  document.querySelectorAll("[data-calendar-drop-date]").forEach(target => {
+    target.addEventListener("dragover", event => {
+      if (!draggedCalendarItem) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      target.classList.add("calendar-drop-active");
+    });
+    target.addEventListener("dragleave", event => {
+      if (!target.contains(event.relatedTarget)) target.classList.remove("calendar-drop-active");
+    });
+    target.addEventListener("drop", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      target.classList.remove("calendar-drop-active");
+      moveCalendarItemToDate(draggedCalendarItem, target.dataset.calendarDropDate);
     });
   });
   
@@ -2042,6 +2192,65 @@ function attachCalendarEventListeners() {
     });
   });
 }
+function openCalendarItemDetail(item) {
+  const modal = document.getElementById("calendarItemDetailModal");
+  const body = document.getElementById("calendarItemDetailBody");
+  const actions = document.getElementById("calendarItemDetailActions");
+  const source = item.sourceType === "glow-ritual" ? habits.find(entry => entry.id === item.sourceId)
+    : item.sourceType === "work-task" ? workTasks.find(entry => entry.id === item.sourceId)
+    : item.sourceType === "glow-event" ? events.find(entry => entry.id === item.sourceId)
+    : item.sourceType === "work-event" ? workEvents.find(entry => entry.id === item.sourceId)
+    : calendarItems.find(entry => entry.id === item.sourceId);
+  body.innerHTML = `<p class="section-label">${item.sourceType.replaceAll("-", " ")}</p><h2 id="calendarItemDetailTitle">${escapeHTML(item.title)}</h2><div class="calendar-detail-meta"><span>${item.icon} ${escapeHTML(String(item.category || item.mode))}</span><span>${item.date}${item.time ? ` · ${item.time}` : ""}</span></div><p>${escapeHTML(source?.why || source?.description || source?.goal || source?.motivation || source?.notes || "Placed in the shared archive.")}</p>`;
+  const completable = ["glow-ritual", "work-task", "calendar-item"].includes(item.sourceType);
+  actions.innerHTML = `${completable ? `<button class="primary-btn" data-calendar-complete>${item.isCompleted ? "Undo completion" : "Complete"}</button>` : ""}${["glow-ritual", "work-task"].includes(item.sourceType) ? `<button class="secondary-btn" data-calendar-schedule>Schedule this occurrence</button>` : ""}${item.sourceType === "calendar-item" ? `<button class="secondary-btn" data-calendar-edit>Edit item</button>` : `<button class="secondary-btn" data-calendar-open-source>Open original</button>`}${item.sourceType === "calendar-item" ? `<button class="danger-btn" data-calendar-delete>Delete</button>` : ""}`;
+  actions.querySelector("[data-calendar-complete]")?.addEventListener("click", () => {
+    if (item.sourceType === "glow-ritual") toggleHabit(item.sourceId, item.date);
+    else if (item.sourceType === "work-task") toggleWorkTaskOnDate(item.sourceId, item.date);
+    else {
+      calendarItemCompletions[item.date] ||= {};
+      calendarItemCompletions[item.date][item.sourceId] = !item.isCompleted;
+      localStorage.setItem(CALENDAR_COMPLETIONS_KEY, JSON.stringify(calendarItemCompletions));
+    }
+    modal.hidden = true;
+    renderCalendarView();
+  });
+  actions.querySelector("[data-calendar-schedule]")?.addEventListener("click", () => openCalendarSchedule(item));
+  actions.querySelector("[data-calendar-open-source]")?.addEventListener("click", () => {
+    modal.hidden = true;
+    if (item.sourceType === "glow-event") { switchMode("glow"); setTimeout(() => openEventDetail(item.sourceId), 1500); }
+    else if (item.sourceType === "work-event") { switchMode("work"); setTimeout(() => openWorkEventDetail(item.sourceId), 1500); }
+    else switchMode(item.mode === "work" ? "work" : "glow");
+  });
+  actions.querySelector("[data-calendar-edit]")?.addEventListener("click", () => {
+    const form = document.getElementById("calendarItemEditorForm");
+    form.reset();
+    Object.entries(source || {}).forEach(([key, value]) => { if (form.elements[key] && value != null) form.elements[key].value = value; });
+    form.elements.itemId.value = source.id;
+    modal.hidden = true;
+    document.getElementById("calendarItemEditorModal").hidden = false;
+  });
+  actions.querySelector("[data-calendar-delete]")?.addEventListener("click", () => {
+    calendarItems = calendarItems.filter(entry => entry.id !== item.sourceId);
+    saveCollection(CALENDAR_ITEMS_KEY, calendarItems);
+    modal.hidden = true;
+    renderCalendarView();
+  });
+  modal.hidden = false;
+}
+function openCalendarSchedule(item) {
+  const form = document.getElementById("calendarScheduleForm");
+  form.reset();
+  form.elements.sourceId.value = item.sourceId;
+  form.elements.sourceType.value = item.sourceType;
+  form.elements.occurrenceKey.value = item.occurrenceKey;
+  form.elements.title.value = item.title;
+  form.elements.date.value = item.date;
+  form.elements.time.value = item.time || "";
+  form.elements.calendarVisible.checked = true;
+  document.getElementById("calendarItemDetailModal").hidden = true;
+  document.getElementById("calendarScheduleModal").hidden = false;
+}
 
 function updateCalendarViewButtons() {
   document.querySelectorAll(".calendar-view-btn").forEach(btn => {
@@ -2054,7 +2263,7 @@ function initializeCalendarMode() {
   document.querySelectorAll('a[href="#calendar"]').forEach(link => {
     link.addEventListener("click", (e) => {
       e.preventDefault();
-      showCalendarMode();
+      switchMode("calendar");
     });
   });
 
@@ -2093,6 +2302,11 @@ function initializeCalendarMode() {
       updateCalendarViewButtons();
     });
   });
+  document.querySelectorAll(".calendar-filter").forEach(button => button.addEventListener("click", () => {
+    calendarFilter = button.dataset.calendarFilter;
+    document.querySelectorAll(".calendar-filter").forEach(item => item.classList.toggle("active", item === button));
+    renderCalendarView();
+  }));
 
   // Navigation
   document.getElementById("calendarPrev")?.addEventListener("click", () => {
@@ -2119,8 +2333,8 @@ function initializeCalendarMode() {
 
   document.getElementById("calendarToday")?.addEventListener("click", () => {
     calendarCurrentDate = new Date();
-    if (calendarCurrentView !== "month") {
-      calendarCurrentView = "month";
+    if (calendarCurrentView !== "week") {
+      calendarCurrentView = "week";
       updateCalendarViewButtons();
     }
     renderCalendarView();
@@ -2162,31 +2376,26 @@ function initializeCalendarMode() {
     document.getElementById("calendarItemEditorModal").hidden = true;
     renderCalendarView();
   });
+  document.getElementById("calendarItemEditorClose")?.addEventListener("click", () => document.getElementById("calendarItemEditorModal").hidden = true);
+  document.getElementById("calendarItemDetailClose")?.addEventListener("click", () => document.getElementById("calendarItemDetailModal").hidden = true);
+  document.getElementById("calendarScheduleClose")?.addEventListener("click", () => document.getElementById("calendarScheduleModal").hidden = true);
+  document.getElementById("calendarScheduleForm")?.addEventListener("submit", event => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const key = `${data.get("sourceType")}:${data.get("sourceId")}:${data.get("occurrenceKey")}`;
+    calendarScheduleOverrides[key] = { itemId: data.get("sourceId"), sourceType: data.get("sourceType"), date: data.get("date"), time: data.get("time"), calendarVisible: data.get("calendarVisible") === "on", updatedAt: new Date().toISOString() };
+    localStorage.setItem(CALENDAR_SCHEDULE_OVERRIDES_KEY, JSON.stringify(calendarScheduleOverrides));
+    document.getElementById("calendarScheduleModal").hidden = true;
+    renderCalendarView();
+    showToast("Occurrence scheduled. The shared archive noticed.");
+  });
 
   renderCalendarView();
   updateCalendarViewButtons();
 }
 
 function showCalendarMode() {
-  document.getElementById("glowMode").hidden = true;
-  document.getElementById("workMode").hidden = true;
-  document.getElementById("calendarMode").hidden = false;
-  document.querySelector(".glow-nav").hidden = false;
-  document.querySelector(".work-nav").hidden = true;
-  forcePageTop();
-  renderCalendarView();
-}
-
-function returnToMode() {
-  document.getElementById("calendarMode").hidden = true;
-  if (currentMode === "work") {
-    document.getElementById("workMode").hidden = false;
-    document.querySelector(".work-nav").hidden = false;
-  } else {
-    document.getElementById("glowMode").hidden = false;
-    document.querySelector(".glow-nav").hidden = false;
-  }
-  forcePageTop();
+  switchMode("calendar");
 }
 
 const currentSection = document.querySelector(".swiss-current");
@@ -2204,11 +2413,15 @@ try {
   console.error("Work Mode startup error:", error);
 }
 try {
+  initializeCalendarMode();
+} catch (error) {
+  console.error("Calendar startup error:", error);
+}
+try {
   migrateToTwoModes();
   renderAll();
   renderMeasurements();
   initialiseAtelier();
-  initializeCalendarMode();
   renderWorkAll();
   applyTimeTheme();
   setInterval(applyTimeTheme, 5 * 60 * 1000);

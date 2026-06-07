@@ -28,11 +28,12 @@
     <div class="mode-switcher" aria-label="Dashboard mode">
       <button class="mode-switch active" type="button" data-mode="glow"><strong>Glow-Up</strong><small>Body &amp; Beauty</small></button>
       <button class="mode-switch" type="button" data-mode="work"><strong>Work Mode</strong><small>Mind &amp; Money</small></button>
+      <button class="mode-switch" type="button" data-mode="calendar"><strong>Calendar</strong><small>Whole Life</small></button>
     </div>
     <nav class="nav glow-nav" aria-label="Glow-Up navigation">
       <a href="#home" data-cursor="track">Today</a>
       <a href="#tracker" data-cursor="track">Tracker</a>
-      <a href="#calendar" data-cursor="plan">Calendar</a>
+      <a href="#calendar" data-mode-link="calendar" data-cursor="plan">Calendar</a>
       <a href="#rituals" data-cursor="build">Rituals</a>
       <a href="#events" data-cursor="reveal">Events</a>
       <a href="#review" data-cursor="review">Review</a>
@@ -42,7 +43,7 @@
     <nav class="nav work-nav" aria-label="Work navigation" hidden>
       <a href="#work-home">Today</a>
       <a href="#work-tasks">Tasks</a>
-      <a href="#calendar">Calendar</a>
+      <a href="#calendar" data-mode-link="calendar">Calendar</a>
       <a href="#work-events">Deadlines</a>
       <a href="#work-review">Review</a>
     </nav>
@@ -325,11 +326,34 @@
   </main>
 
   <main id="calendarMode" class="mode-page mode-page--calendar" hidden>
+    <section id="calendar" class="calendar-hero section">
+      <div>
+        <p class="kicker">Day · Week · Month · Life Map</p>
+        <h1><span>The Archive</span><span>Calendar</span></h1>
+        <p class="intro">A visual map of the rituals, deadlines, and D-days building your life.</p>
+      </div>
+      <div class="calendar-hero-note">
+        <span>One shared archive</span>
+        <strong>Glow rituals in rose. Work rituals in blue. Important dates in gold.</strong>
+        <p>This is where the glow-up becomes scheduled.</p>
+      </div>
+    </section>
+    <section class="calendar-command section">
+      <div class="calendar-summary" id="calendarSummary"></div>
+      <div class="calendar-filter-rail">
+        <button class="calendar-filter active" data-calendar-filter="all">All</button>
+        <button class="calendar-filter" data-calendar-filter="glow">Glow</button>
+        <button class="calendar-filter" data-calendar-filter="work">Work</button>
+        <button class="calendar-filter" data-calendar-filter="events">D-Days</button>
+        <button class="calendar-filter" data-calendar-filter="deadlines">Deadlines</button>
+        <button class="calendar-filter" data-calendar-filter="rituals">Rituals &amp; tasks</button>
+      </div>
     <div class="calendar-page-wrapper">
-      <!-- Calendar Sidebar -->
       <aside class="calendar-sidebar">
         <div class="calendar-sidebar-header">
-          <h3>Calendars</h3>
+          <p class="section-label">Visible archives</p>
+          <h3>Calendar layers</h3>
+          <p>Daily rituals stay in their trackers. This page holds the rituals that need a place in the week.</p>
         </div>
 
         <!-- Glow Categories Dropdown -->
@@ -380,6 +404,10 @@
                 <input type="checkbox" data-calendar-category="soul" data-mode="glow" checked />
                 <span class="checkbox-label">Soul / Mind</span>
               </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="social" data-mode="glow" checked />
+                <span class="checkbox-label">Relationship / Social</span>
+              </label>
             </div>
           </div>
         </div>
@@ -424,6 +452,10 @@
                 <input type="checkbox" data-calendar-category="skills" data-mode="work" checked />
                 <span class="checkbox-label">Skill Building</span>
               </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="networking" data-mode="work" checked />
+                <span class="checkbox-label">Networking</span>
+              </label>
             </div>
           </div>
         </div>
@@ -445,7 +477,7 @@
               <button class="calendar-view-btn" data-calendar-view="week">Week</button>
               <button class="calendar-view-btn" data-calendar-view="day">Day</button>
             </div>
-            <button class="primary-btn calendar-add-btn" id="calendarAddBtn">+ Add Event</button>
+            <button class="primary-btn calendar-add-btn" id="calendarAddBtn">Add to Calendar</button>
           </div>
         </div>
 
@@ -455,6 +487,7 @@
         </div>
       </section>
     </div>
+    </section>
   </main>
 
   <div class="level-modal" id="levelModal" hidden aria-live="polite">
@@ -583,6 +616,24 @@
       <div id="calendarItemDetailBody"></div>
       <div class="calendar-item-detail-actions" id="calendarItemDetailActions"></div>
     </div>
+  </div>
+
+  <div class="atelier-modal" id="calendarScheduleModal" hidden role="dialog" aria-modal="true" aria-labelledby="calendarScheduleTitle">
+    <form class="atelier-form atelier-form--calendar" id="calendarScheduleForm">
+      <button class="checkin-close" type="button" id="calendarScheduleClose">×</button>
+      <p class="section-label">Schedule this occurrence</p>
+      <h2 id="calendarScheduleTitle">Place it in the archive.</h2>
+      <input type="hidden" name="sourceId" />
+      <input type="hidden" name="sourceType" />
+      <input type="hidden" name="occurrenceKey" />
+      <div class="atelier-fields">
+        <label class="atelier-wide">Ritual or task<input name="title" disabled /></label>
+        <label>Date<input name="date" type="date" required /></label>
+        <label>Time<input name="time" type="time" /></label>
+        <label class="reset-check atelier-wide"><input name="calendarVisible" type="checkbox" checked /> Show this occurrence on the shared calendar</label>
+      </div>
+      <button class="primary-btn" type="submit">Save Schedule</button>
+    </form>
   </div>
 
   <div class="atelier-modal work-modal" id="workTaskEditorModal" hidden role="dialog" aria-modal="true" aria-labelledby="workTaskEditorTitle">
