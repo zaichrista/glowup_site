@@ -747,7 +747,34 @@
       <button class="primary-btn checkin-submit" id="eveningReflectionSubmit" type="submit" disabled>Archive Today</button>
     </form>
   </div>
+
+  <div class="auth-gate" id="authGate" hidden aria-modal="true" role="dialog" aria-labelledby="authGateTitle">
+    <form class="auth-card" id="authForm">
+      <p class="section-label">Private archive access</p>
+      <h2 id="authGateTitle">Enter your command centre.</h2>
+      <p>Your rituals, journals, check-ins, and deadlines will sync privately across your devices.</p>
+      <label>Username<input id="authUsername" name="username" autocomplete="username" required /></label>
+      <label>Password<input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="6" required /></label>
+      <p class="auth-status" id="authStatus">Sign in, or create your private account the first time.</p>
+      <button class="primary-btn" type="submit">Sign in</button>
+      <button class="secondary-btn" type="button" id="authCreateAccount">Create private account</button>
+    </form>
+  </div>
+
+  <div class="atelier-modal sync-choice-modal" id="syncChoiceModal" hidden role="dialog" aria-modal="true" aria-labelledby="syncChoiceTitle">
+    <div class="atelier-form atelier-form--ritual sync-choice-card">
+      <p class="section-label">Private archive sync</p>
+      <h2 id="syncChoiceTitle">Which archive should lead?</h2>
+      <p>This device and your cloud archive both contain data. Choose carefully; the selected archive becomes the version used across devices.</p>
+      <div class="sync-choice-actions">
+        <button class="secondary-btn" id="syncUseCloud" type="button">Use cloud archive</button>
+        <button class="primary-btn" id="syncUseDevice" type="button">Use this device</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" aria-live="polite"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="script.js"></script>
 </body>
 </html>

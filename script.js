@@ -31,8 +31,234 @@ const CALENDAR_ITEMS_KEY = "calendarItems";
 const CALENDAR_SCHEDULE_OVERRIDES_KEY = "calendarScheduleOverrides";
 const CALENDAR_COMPLETIONS_KEY = "calendarItemCompletions";
 const CALENDAR_DAY_NOTES_KEY = "calendarDayNotes";
+const SUPABASE_URL = "https://xoxmhnhfmkgzaxqxiavo.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_uGE3D8WW69Kma90w8qJoSw_iC9soT99";
+const CLOUD_TABLE = "user_archives";
+const CLOUD_LAST_REMOTE_KEY = "glowCloudLastRemoteAt";
+const CLOUD_LOCAL_CHANGE_KEY = "glowCloudLocalChangedAt";
+const CLOUD_USERNAME_KEY = "glowCloudUsername";
+const CLOUD_SYNC_KEYS = [
+  STORAGE_KEY, CHECKIN_KEY, HABIT_UPDATE_KEY, EVENING_KEY, EVENTS_KEY,
+  CUSTOM_RITUALS_KEY, RITUAL_OVERRIDES_KEY, WORK_STATE_KEY, WORK_TASKS_KEY,
+  WORK_EVENTS_KEY, MODE_MIGRATION_KEY, CALENDAR_ITEMS_KEY,
+  CALENDAR_SCHEDULE_OVERRIDES_KEY, CALENDAR_COMPLETIONS_KEY, CALENDAR_DAY_NOTES_KEY
+];
 const TODAY_KEY = dateKey(new Date());
 const TIME_CLASSES = ["time-dawn", "time-morning", "time-midday", "time-afternoon", "time-sunset", "time-evening", "time-night"];
+
+let cloudClient = null;
+let cloudUser = null;
+let cloudApplying = false;
+let cloudSyncTimer = null;
+let cloudStartupComplete = false;
+let pendingCloudArchive = null;
+const nativeStorageSetItem = Storage.prototype.setItem;
+const nativeStorageRemoveItem = Storage.prototype.removeItem;
+
+function isCloudSyncKey(key) { return CLOUD_SYNC_KEYS.includes(String(key)); }
+function markLocalCloudChange() {
+  nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, new Date().toISOString());
+}
+Storage.prototype.setItem = function patchedStorageSetItem(key, value) {
+  nativeStorageSetItem.call(this, key, value);
+  if (this === localStorage && isCloudSyncKey(key) && !cloudApplying) {
+    markLocalCloudChange();
+    scheduleCloudUpload();
+  }
+};
+Storage.prototype.removeItem = function patchedStorageRemoveItem(key) {
+  nativeStorageRemoveItem.call(this, key);
+  if (this === localStorage && isCloudSyncKey(key) && !cloudApplying) {
+    markLocalCloudChange();
+    scheduleCloudUpload();
+  }
+};
+
+function usernameEmail(username) {
+  const safe = username.toLowerCase().trim().replace(/[^a-z0-9._-]/g, "-").replace(/^-+|-+$/g, "");
+  return safe ? `${safe}@users.glowup.app` : "";
+}
+function localArchiveSnapshot() {
+  return Object.fromEntries(CLOUD_SYNC_KEYS.map(key => [key, localStorage.getItem(key)]).filter(([, value]) => value !== null));
+}
+function hasLocalArchiveData() {
+  return CLOUD_SYNC_KEYS.some(key => localStorage.getItem(key) !== null);
+}
+function applyCloudArchive(data = {}) {
+  cloudApplying = true;
+  CLOUD_SYNC_KEYS.forEach(key => {
+    if (Object.prototype.hasOwnProperty.call(data, key) && data[key] !== null) nativeStorageSetItem.call(localStorage, key, data[key]);
+    else nativeStorageRemoveItem.call(localStorage, key);
+  });
+  cloudApplying = false;
+}
+function scheduleCloudUpload() {
+  if (!cloudClient || !cloudUser || cloudApplying) return;
+  clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = setTimeout(uploadLocalArchive, 1100);
+}
+async function uploadLocalArchive() {
+  if (!cloudClient || !cloudUser || cloudApplying) return;
+  const updatedAt = new Date().toISOString();
+  const { error } = await cloudClient.from(CLOUD_TABLE).upsert({
+    user_id: cloudUser.id,
+    data: localArchiveSnapshot(),
+    updated_at: updatedAt
+  }, { onConflict: "user_id" });
+  if (error) {
+    updateAuthStatus(`Signed in, but cloud sync needs setup: ${error.message}`, true);
+    return;
+  }
+  nativeStorageSetItem.call(localStorage, CLOUD_LAST_REMOTE_KEY, updatedAt);
+  nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, updatedAt);
+  updateCloudIndicator("Private sync complete");
+}
+function updateCloudIndicator(message) {
+  const header = document.getElementById("streakHeader");
+  if (header && cloudUser) header.textContent = message;
+}
+function updateAuthStatus(message, isError = false) {
+  const status = document.getElementById("authStatus");
+  if (!status) return;
+  status.textContent = message;
+  status.classList.toggle("is-error", isError);
+}
+function refreshRuntimeFromStorage() {
+  state = loadState();
+  ensureDay(TODAY_KEY);
+  ritualOverrides = loadRecords(RITUAL_OVERRIDES_KEY);
+  customRituals = loadCollection(CUSTOM_RITUALS_KEY);
+  events = loadCollection(EVENTS_KEY);
+  syncCustomRituals();
+  customWorkTasks = loadCollection(WORK_TASKS_KEY).map(task => ({ ...task, category: mapLegacyWorkCategory(task.category) }));
+  workTasks = [...builtInWorkTasks, ...customWorkTasks.filter(task => !task.deleted)];
+  workEvents = loadCollection(WORK_EVENTS_KEY);
+  workState = loadWorkState();
+  calendarItems = loadCollection(CALENDAR_ITEMS_KEY);
+  calendarScheduleOverrides = loadRecords(CALENDAR_SCHEDULE_OVERRIDES_KEY);
+  calendarItemCompletions = loadRecords(CALENDAR_COMPLETIONS_KEY);
+  calendarDayNotes = loadRecords(CALENDAR_DAY_NOTES_KEY);
+  renderAll();
+  renderWorkAll();
+  renderMeasurements();
+  renderCalendarView();
+  renderDailyArchive();
+}
+function showAuthGate() {
+  document.getElementById("authGate").hidden = false;
+  document.body.classList.add("modal-locked");
+  document.getElementById("loader")?.classList.add("hide");
+  setTimeout(() => document.getElementById("authUsername")?.focus(), 50);
+}
+function hideAuthGate() {
+  document.getElementById("authGate").hidden = true;
+  document.body.classList.remove("modal-locked");
+}
+function finishCloudStartup() {
+  if (cloudStartupComplete) return;
+  cloudStartupComplete = true;
+  hideAuthGate();
+  runDailyCheckinPriority();
+}
+function chooseArchive(remoteRow) {
+  pendingCloudArchive = remoteRow;
+  document.getElementById("syncChoiceModal").hidden = false;
+  document.body.classList.add("modal-locked");
+}
+async function resolveCloudArchive() {
+  if (!cloudClient || !cloudUser) return;
+  updateCloudIndicator("Syncing private archive…");
+  const { data, error } = await cloudClient.from(CLOUD_TABLE).select("data, updated_at").eq("user_id", cloudUser.id).maybeSingle();
+  if (error) {
+    updateAuthStatus(`Signed in. Run the Supabase setup SQL to enable syncing: ${error.message}`, true);
+    updateCloudIndicator("Signed in · sync setup needed");
+    finishCloudStartup();
+    return;
+  }
+  if (!data) {
+    await uploadLocalArchive();
+    finishCloudStartup();
+    return;
+  }
+  const lastRemoteAt = localStorage.getItem(CLOUD_LAST_REMOTE_KEY);
+  if (hasLocalArchiveData() && lastRemoteAt !== data.updated_at) {
+    chooseArchive(data);
+    return;
+  }
+  applyCloudArchive(data.data || {});
+  nativeStorageSetItem.call(localStorage, CLOUD_LAST_REMOTE_KEY, data.updated_at);
+  nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, data.updated_at);
+  refreshRuntimeFromStorage();
+  updateCloudIndicator("Private sync complete");
+  finishCloudStartup();
+}
+async function handleAuth(mode) {
+  const username = document.getElementById("authUsername").value.trim();
+  const password = document.getElementById("authPassword").value;
+  const email = usernameEmail(username);
+  if (!email || password.length < 6) {
+    updateAuthStatus("Use a username and a password of at least six characters.", true);
+    return;
+  }
+  updateAuthStatus(mode === "create" ? "Creating your private archive…" : "Opening your private archive…");
+  const response = mode === "create"
+    ? await cloudClient.auth.signUp({ email, password, options: { data: { username } } })
+    : await cloudClient.auth.signInWithPassword({ email, password });
+  if (response.error) {
+    updateAuthStatus(response.error.message, true);
+    return;
+  }
+  if (!response.data.session) {
+    updateAuthStatus("Account created, but Supabase email confirmation is enabled. Disable Confirm email in Supabase Auth settings, then sign in.", true);
+    return;
+  }
+  nativeStorageSetItem.call(localStorage, CLOUD_USERNAME_KEY, username);
+  cloudUser = response.data.user;
+  await resolveCloudArchive();
+}
+async function initialiseCloudAuth() {
+  if (!window.supabase?.createClient) {
+    updateAuthStatus("Could not reach the private sync service. Check your connection and reload.", true);
+    showAuthGate();
+    return;
+  }
+  cloudClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+  document.getElementById("authUsername").value = localStorage.getItem(CLOUD_USERNAME_KEY) || "";
+  document.getElementById("authForm").addEventListener("submit", event => {
+    event.preventDefault();
+    handleAuth("signin");
+  });
+  document.getElementById("authCreateAccount").addEventListener("click", () => handleAuth("create"));
+  document.getElementById("syncUseCloud").addEventListener("click", () => {
+    if (!pendingCloudArchive) return;
+    applyCloudArchive(pendingCloudArchive.data || {});
+    nativeStorageSetItem.call(localStorage, CLOUD_LAST_REMOTE_KEY, pendingCloudArchive.updated_at);
+    nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, pendingCloudArchive.updated_at);
+    pendingCloudArchive = null;
+    document.getElementById("syncChoiceModal").hidden = true;
+    refreshRuntimeFromStorage();
+    updateCloudIndicator("Cloud archive restored");
+    finishCloudStartup();
+  });
+  document.getElementById("syncUseDevice").addEventListener("click", async () => {
+    pendingCloudArchive = null;
+    document.getElementById("syncChoiceModal").hidden = true;
+    await uploadLocalArchive();
+    finishCloudStartup();
+  });
+  const { data, error } = await cloudClient.auth.getSession();
+  if (error) {
+    updateAuthStatus(error.message, true);
+    showAuthGate();
+    return;
+  }
+  cloudUser = data.session?.user || null;
+  if (!cloudUser) {
+    showAuthGate();
+    return;
+  }
+  await resolveCloudArchive();
+}
 
 function applyTimeTheme() {
   const now = new Date();
@@ -2556,7 +2782,6 @@ if (currentSection) observer.observe(currentSection);
 
 initialiseCheckinForms();
 applyTimeTheme();
-runDailyCheckinPriority();
 try {
   initialiseWorkMode();
   renderWorkAll();
@@ -2584,5 +2809,5 @@ try {
   setTimeout(forcePageTop, 500);
 } catch (error) {
   console.error("Dashboard startup error:", error);
-  runDailyCheckinPriority();
 }
+initialiseCloudAuth();
