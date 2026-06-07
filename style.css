@@ -3305,3 +3305,275 @@ body.auth-open .cursor-label { color: var(--oxblood); }
   .sync-choice-actions { grid-template-columns: 1fr; }
   .cloud-signout-btn { width: 100%; min-height: 42px; }
 }
+
+/* Night edition: warm, cinematic, and consistently readable across every mode. */
+body.time-night {
+  --paper: #12090e;
+  --paper-2: #1a0d14;
+  --pearl: #fff2ed;
+  --ink: #fff2ed;
+  --muted: #d9b9c4;
+  --rose: #d36f98;
+  --hot: #e57aa2;
+  --hot-pink: #e57aa2;
+  --blush: #5b293d;
+  --soft: #9e5875;
+  --mauve: #c58ca2;
+  --champagne: #e4c79b;
+  --gold: #caa66b;
+  --oxblood: #8e3657;
+  --wine: #efb3c8;
+  --line: rgba(255,226,235,.17);
+  --orb-one: rgba(194,72,120,.3);
+  --orb-two: rgba(116,35,69,.4);
+  --orb-three: rgba(190,108,117,.24);
+  --aura: rgba(211,111,152,.18);
+  --card-bg: rgba(42,19,30,.84);
+  --sky-wash: rgba(103,30,61,.46);
+  --shadow: 0 20px 58px rgba(0,0,0,.42), 0 4px 16px rgba(0,0,0,.24);
+  --glow: 0 18px 48px rgba(173,64,107,.2);
+  color: var(--ink);
+  background: var(--paper);
+}
+
+body.time-night.mode-work {
+  --paper: #0f090e;
+  --paper-2: #190e17;
+  --pearl: #fff1ed;
+  --ink: #fff1ed;
+  --muted: #d5b6c4;
+  --rose: #bd6f98;
+  --hot: #d67aa3;
+  --hot-pink: #d67aa3;
+  --blush: #4f2a43;
+  --soft: #8d5b79;
+  --mauve: #bb8da5;
+  --champagne: #dec69f;
+  --gold: #c4a36e;
+  --oxblood: #8a4264;
+  --wine: #ecc1d0;
+  --line: rgba(255,226,235,.16);
+  --orb-one: rgba(129,72,119,.28);
+  --orb-two: rgba(70,38,74,.4);
+  --orb-three: rgba(175,99,114,.23);
+  --aura: rgba(159,77,124,.18);
+  --card-bg: rgba(35,20,32,.86);
+  --sky-wash: rgba(71,35,72,.42);
+}
+
+body.time-night.mode-calendar {
+  --calendar-paper: rgba(20,10,16,.92);
+  --calendar-ink: #fff2ed;
+  --calendar-line: rgba(255,226,235,.17);
+  --calendar-glow: #ca7197;
+  --calendar-work: #9c789c;
+  --calendar-gold: #c7a46d;
+  --calendar-card: rgba(40,21,32,.9);
+  --card-bg: var(--calendar-card);
+  --line: var(--calendar-line);
+}
+
+body.time-night::before {
+  opacity: .82;
+  background:
+    radial-gradient(ellipse at 18% 20%, rgba(184,62,108,.28), transparent 34%),
+    radial-gradient(ellipse at 86% 36%, rgba(104,42,82,.28), transparent 36%),
+    radial-gradient(ellipse at 48% 88%, rgba(177,91,99,.2), transparent 42%),
+    linear-gradient(150deg, #170a11, #0d070b 62%);
+}
+
+body.time-night .orb { opacity: .2; filter: blur(90px); mix-blend-mode: screen; }
+body.time-night .orb--one { background: rgba(184,56,106,.42); }
+body.time-night .orb--two { background: rgba(108,44,82,.42); }
+body.time-night .orb--three { background: rgba(185,104,111,.3); }
+
+body.time-night .site-header {
+  background: rgba(18,9,14,.9);
+  border-color: var(--line);
+  color: var(--ink);
+  box-shadow: 0 16px 54px rgba(0,0,0,.42);
+}
+
+body.time-night .section {
+  background-color: transparent;
+  background-image: linear-gradient(145deg, rgba(126,45,78,.08), transparent 44%);
+}
+
+body.time-night .hero-pie-card,
+body.time-night .score-card,
+body.time-night .summary-tile,
+body.time-night .command-habit,
+body.time-night .review-card,
+body.time-night .daily-archive-card,
+body.time-night .work-level-card,
+body.time-night .next-dday,
+body.time-night .event-card,
+body.time-night .event-detail-hero,
+body.time-night .event-metrics article,
+body.time-night .event-story article,
+body.time-night .event-category-balance,
+body.time-night .event-reflection,
+body.time-night .event-notes,
+body.time-night .event-linked-list article,
+body.time-night .calendar-main-content,
+body.time-night .calendar-sidebar,
+body.time-night .calendar-hero-note,
+body.time-night .calendar-month-day,
+body.time-night .calendar-day-column,
+body.time-night .calendar-time-slot {
+  background: linear-gradient(145deg, rgba(54,25,39,.9), rgba(31,15,24,.9));
+  border-color: var(--line);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+body.time-night .command-habit.done,
+body.time-night.mode-work .command-habit.done {
+  background: linear-gradient(145deg, rgba(112,46,73,.9), rgba(65,31,45,.92));
+}
+
+body.time-night .tracker-scroll,
+body.time-night .habit-table .habit-name,
+body.time-night .tracker-tabs,
+body.time-night .tracker-arrow,
+body.time-night .tracker-today,
+body.time-night .habit-filters,
+body.time-night .calendar-filter-rail,
+body.time-night .event-tabs,
+body.time-night .calendar-header,
+body.time-night .calendar-view-options,
+body.time-night .calendar-nav-btn,
+body.time-night .calendar-today-btn {
+  background: rgba(34,17,27,.94);
+  border-color: var(--line);
+  color: var(--ink);
+  box-shadow: none;
+}
+
+body.time-night .habit-table thead .habit-name { background: #552039; }
+body.time-night .habit-table th,
+body.time-night .habit-table td { border-color: var(--line); }
+
+body.time-night .atelier-form,
+body.time-night .calendar-item-detail-content,
+body.time-night .level-modal-card,
+body.time-night .checkin-card,
+body.time-night .auth-card,
+body.time-night .delete-confirm-card,
+body.time-night .sync-choice-card {
+  background:
+    radial-gradient(circle at 50% 0, rgba(151,61,96,.17), transparent 42%),
+    #21121b;
+  border-color: var(--line);
+  color: var(--ink);
+  box-shadow: 0 30px 100px rgba(0,0,0,.52);
+}
+
+body.time-night input,
+body.time-night textarea,
+body.time-night select,
+body.time-night .auth-card input {
+  background: #160c12;
+  border-color: rgba(255,226,235,.2);
+  color: var(--ink);
+}
+
+body.time-night input::placeholder,
+body.time-night textarea::placeholder { color: #aa8292; }
+
+body.time-night .section-head h2,
+body.time-night h1,
+body.time-night h2,
+body.time-night h3,
+body.time-night h4,
+body.time-night strong,
+body.time-night .day-number,
+body.time-night .day-date,
+body.time-night .calendar-period-title,
+body.time-night .calendar-date-header,
+body.time-night .auth-card h2,
+body.time-night .delete-confirm-card h2,
+body.time-night .calendar-item-detail-content h2 {
+  color: var(--ink);
+}
+
+body.time-night p,
+body.time-night small,
+body.time-night .due-status,
+body.time-night .command-habit-copy,
+body.time-night .item-content small,
+body.time-night .event-countdown,
+body.time-night .calendar-detail-meta span,
+body.time-night .auth-card > p:not(.section-label),
+body.time-night .delete-confirm-card > p:not(.section-label) {
+  color: var(--muted);
+}
+
+body.time-night .section-label,
+body.time-night .mono,
+body.time-night .kicker,
+body.time-night label,
+body.time-night .time-atmosphere span,
+body.time-night .time-atmosphere small { color: var(--mauve); }
+
+body.time-night .primary-btn,
+body.time-night .mode-switch.active,
+body.time-night .habit-filter.active,
+body.time-night .work-task-filter.active,
+body.time-night .calendar-filter.active,
+body.time-night .tracker-tab.active,
+body.time-night .work-tracker-tab.active,
+body.time-night .calendar-view-btn.active {
+  background: linear-gradient(135deg, #c35f89, #76304e);
+  border-color: rgba(255,226,235,.18);
+  color: #fff7f2;
+  box-shadow: 0 10px 30px rgba(135,45,82,.28);
+}
+
+body.time-night .secondary-btn,
+body.time-night .text-button,
+body.time-night .text-link,
+body.time-night .ritual-check,
+body.time-night .event-tab,
+body.time-night .habit-filter,
+body.time-night .work-task-filter,
+body.time-night .calendar-filter,
+body.time-night .tracker-tab,
+body.time-night .work-tracker-tab,
+body.time-night .calendar-view-btn {
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+body.time-night .frequency-badge,
+body.time-night.mode-work .frequency-badge {
+  background: rgba(125,52,82,.62);
+  border-color: rgba(255,226,235,.15);
+  color: #ffe9f0;
+}
+
+body.time-night .calendar-item.glow {
+  border-color: rgba(217,105,150,.32);
+  background: rgba(119,43,76,.62);
+  color: #fff1ed;
+}
+
+body.time-night .calendar-item.work {
+  border-color: rgba(168,119,159,.3);
+  background: rgba(75,48,78,.68);
+  color: #fff1ed;
+}
+
+body.time-night .calendar-item--glow-event,
+body.time-night .calendar-item--work-event {
+  border-color: rgba(202,166,107,.36) !important;
+  background: rgba(103,65,52,.66) !important;
+  color: #fff1ed !important;
+}
+
+body.time-night .auth-gate {
+  background:
+    radial-gradient(ellipse at 20% 18%, rgba(179,60,106,.3), transparent 36%),
+    radial-gradient(ellipse at 80% 35%, rgba(105,45,81,.3), transparent 40%),
+    linear-gradient(150deg, #170a11, #090507);
+}
