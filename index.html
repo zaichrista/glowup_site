@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zai Glow-Up Command Centre</title>
+  <meta name="description" content="An interactive daily glow-up dashboard for Zai: fitness, nutrition, posture, hair and life progress tracking." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="cursor" aria-hidden="true"><span class="cursor-label"></span></div>
+  <div class="cursor-dot" aria-hidden="true"></div>
+  <div class="grain" aria-hidden="true"></div>
+  <div class="orb orb--one" aria-hidden="true"></div>
+  <div class="orb orb--two" aria-hidden="true"></div>
+  <div class="orb orb--three" aria-hidden="true"></div>
+
+  <div class="loader" id="loader" aria-hidden="true">
+    <div class="loader-inner">
+      <p class="loader-line active">Some girls wait for motivation.</p>
+      <p class="loader-line">Zai builds systems.</p>
+      <p class="loader-mark">Glow-Up Station</p>
+    </div>
+  </div>
+
+  <header class="site-header">
+    <a href="#home" class="brand" data-cursor="home">Zai <em>Glow-Up</em></a>
+    <nav class="nav" aria-label="Primary navigation">
+      <a href="#home" data-cursor="track">Today</a>
+      <a href="#tracker" data-cursor="track">Tracker</a>
+      <a href="#rituals" data-cursor="build">Rituals</a>
+      <a href="#review" data-cursor="review">Review</a>
+      <a href="#measurements" data-cursor="log">Measures</a>
+      <a href="#reset" data-cursor="careful">Reset</a>
+    </nav>
+    <div class="availability" id="streakHeader">Streak 0</div>
+  </header>
+
+  <main>
+    <section id="home" class="hero section">
+      <div class="hero-copy">
+        <p class="kicker">June–September 2026 · Princess Discipline Mode</p>
+        <h1><span>The Glow-Up</span><span>Command Centre</span></h1>
+        <p class="intro">
+          A daily ritual for the body, the posture, the hair, the mind, and the life.
+        </p>
+        <div class="hero-actions">
+          <a href="#tracker" class="text-link" data-cursor="start">Open tracker <span>＋</span></a>
+          <button class="text-button muted" id="quickWinBtn" data-cursor="boost">Give me a boost</button>
+        </div>
+      </div>
+      <article class="hero-pie-card">
+        <div class="hero-pie-top">
+          <p class="section-label" id="chartTitle">Today's completion</p>
+          <strong id="heroDoneCount">0 / 25 habits</strong>
+        </div>
+        <div class="chart-modes" aria-label="Chart mode">
+          <button class="chart-mode active" data-chart-mode="today">Today</button>
+          <button class="chart-mode" data-chart-mode="weekly">Weekly</button>
+          <button class="chart-mode" data-chart-mode="category">Categories</button>
+          <button class="chart-mode" data-chart-mode="life">Life balance</button>
+        </div>
+        <div class="pie-wrap">
+          <div class="pie pie--hero" id="progressPie"><span id="progressPercent">0%</span></div>
+        </div>
+        <div class="chart-legend" id="chartLegend"></div>
+        <p class="duo-line" id="motivationLine">Tick one task. The system wakes up.</p>
+        <div class="level-bar"><div id="levelBarFill"></div></div>
+        <p class="mono" id="levelText">Level 1 · Baby pink discipline</p>
+      </article>
+      <div class="hero-bottom-note">
+        <span id="todayDate">Today</span>
+        <span>Soft life · serious standards</span>
+      </div>
+    </section>
+
+    <section id="today" class="dashboard section swiss-current">
+      <div class="section-head">
+        <p class="section-label">Today</p>
+        <h2>The command summary.</h2>
+      </div>
+      <div class="command-summary" id="commandSummary"></div>
+      <div class="dashboard-grid dashboard-grid--stats">
+        <article class="score-card stats-card">
+          <p class="section-label">Glow level &amp; streaks</p>
+          <div class="level-command">
+            <span class="level-orb" id="levelNumber">1</span>
+            <div>
+              <strong id="levelName">The Initiate</strong>
+              <p id="nextUnlock">Next unlock: more rose accents</p>
+            </div>
+          </div>
+          <div class="glow-progress"><div id="glowLevelFill"></div></div>
+          <p class="mono" id="glowLevelProgress">0 / 7 rituals completed</p>
+          <div class="stat-row"><span>Current streak</span><strong id="streakCount">0 days</strong></div>
+          <div class="stat-row"><span>Best streak</span><strong id="bestStreak">0 days</strong></div>
+          <div class="stat-row"><span>Total ticks</span><strong id="totalTicks">0</strong></div>
+          <div class="stat-row"><span>Last saved</span><strong id="lastSaved">Never</strong></div>
+          <button class="primary-btn" id="completeDayBtn" data-cursor="save">Save today</button>
+        </article>
+      </div>
+    </section>
+
+    <section id="daily-archive" class="daily-archive section">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Private daily record</p>
+          <h2>The Daily Archive.</h2>
+        </div>
+        <p class="ritual-board-note" id="dailyArchiveStatus">Meet yourself. Witness yourself.</p>
+      </div>
+      <div class="daily-archive-grid" id="dailyArchiveGrid"></div>
+    </section>
+
+    <section id="rituals" class="ritual-board section">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Life command dashboard</p>
+          <h2>Today’s rituals.</h2>
+        </div>
+        <p class="ritual-board-note" id="ritualBoardNote">Due today, darling.</p>
+      </div>
+      <div class="habit-filters" id="habitFilters" aria-label="Habit filters">
+        <button class="habit-filter active" data-filter="today">Today</button>
+        <button class="habit-filter" data-filter="daily">Daily</button>
+        <button class="habit-filter" data-filter="weekly">Weekly</button>
+        <button class="habit-filter" data-filter="biweekly">Biweekly</button>
+        <button class="habit-filter" data-filter="monthly">Monthly</button>
+        <button class="habit-filter" data-filter="all">All</button>
+        <button class="habit-filter" data-filter="completed">Completed</button>
+        <button class="habit-filter" data-filter="missed">Missed</button>
+      </div>
+      <div class="life-category-board" id="habitBoard"></div>
+    </section>
+
+    <section id="tracker" class="tracker section">
+      <div class="section-head tracker-head">
+        <div>
+          <p class="section-label">Progress tracker</p>
+          <h2>Your pink receipts.</h2>
+        </div>
+        <div class="tracker-tabs" role="tablist" aria-label="Tracker view">
+          <button class="tracker-tab active" data-view="week" role="tab" aria-selected="true">Week</button>
+          <button class="tracker-tab" data-view="month" role="tab" aria-selected="false">Month</button>
+          <button class="tracker-tab" data-view="archive" role="tab" aria-selected="false">Archive</button>
+        </div>
+      </div>
+      <div class="tracker-toolbar">
+        <button class="tracker-arrow" id="trackerPrev" aria-label="Previous period">←</button>
+        <strong id="trackerPeriod">This week</strong>
+        <button class="tracker-arrow" id="trackerNext" aria-label="Next period">→</button>
+        <button class="tracker-today" id="trackerToday">Back to today</button>
+      </div>
+      <div id="trackerTables" class="tracker-tables"></div>
+      <div id="archiveWindow" class="archive-window" hidden>
+        <div class="archive-window-head">
+          <div>
+            <p class="section-label">Month archive</p>
+            <h3>Progress at a glance.</h3>
+          </div>
+          <p class="mono">Select a month to open its full tracker.</p>
+        </div>
+        <div id="archiveMonths" class="archive-months"></div>
+      </div>
+    </section>
+
+    <section id="review" class="ritual-review section">
+      <div class="section-head">
+        <p class="section-label">Weekly &amp; monthly intelligence</p>
+        <h2>The Ritual Review.</h2>
+      </div>
+      <div class="review-grid" id="reviewGrid"></div>
+    </section>
+
+    <section id="measurements" class="measure section">
+      <div class="section-head">
+        <p class="section-label">Measurements</p>
+        <h2>Track without spiralling.</h2>
+      </div>
+      <div class="measure-grid">
+        <label>Waist today <input id="waistInput" type="number" step="0.1" placeholder="26.5" /></label>
+        <label>Weight today <input id="weightInput" type="number" step="0.1" placeholder="58.7" /></label>
+        <label>Glute focus note <input id="gluteInput" type="text" placeholder="Hip thrusts felt strong" /></label>
+      </div>
+      <button class="primary-btn" id="saveMeasurementsBtn" data-cursor="log">Save measurements</button>
+      <div class="measurement-log" id="measurementLog"></div>
+    </section>
+
+    <section id="reset" class="contact section">
+      <div>
+        <h2>Erase the Ritual Archive.</h2>
+        <p class="intro reset-copy">Your progress is saved in this browser using local storage. To erase it, you must type the exact reset phrase, tick the warning, and hold the reset button.</p>
+      </div>
+      <div class="reset-panel">
+        <p class="section-label">Archive reset</p>
+        <label class="reset-check"><input type="checkbox" id="resetCheckbox" /> I understand this deletes completions, streaks, levels, history, and unlocks.</label>
+        <input id="resetPhrase" placeholder="Type: ERASE MY RITUAL ARCHIVE" />
+        <button id="resetBtn" class="danger-btn" data-cursor="nope">Hold to reset</button>
+        <p class="mono" id="resetStatus">Protected by dramatic inconvenience.</p>
+      </div>
+      <div class="footer-wordmark"><span>GLOW</span> <em>Up</em></div>
+    </section>
+  </main>
+
+  <div class="level-modal" id="levelModal" hidden aria-live="polite">
+    <div class="level-modal-card">
+      <button class="level-modal-close" id="levelModalClose" aria-label="Close level-up message">×</button>
+      <p class="section-label">Glow level unlocked</p>
+      <span class="level-modal-number" id="levelModalNumber">2</span>
+      <h2 id="levelModalTitle">The Ritualist</h2>
+      <p id="levelModalCopy">Your standards just got prettier.</p>
+    </div>
+  </div>
+  <div class="checkin-modal morning-checkin" id="morningCheckinModal" hidden aria-modal="true" role="dialog" aria-labelledby="morningCheckinTitle">
+    <form class="checkin-card checkin-card--morning" id="morningCheckinForm">
+      <div class="checkin-intro">
+        <p class="section-label">Mandatory morning archive</p>
+        <h2 id="morningCheckinTitle">Before the world gets you, archive yourself.</h2>
+        <p>Weight, waist, gratitude, affirmation, notes. Then the day may begin.</p>
+      </div>
+      <div class="checkin-fields checkin-fields--morning">
+        <label>Weight<input id="morningWeight" name="weight" type="number" step="0.1" required /></label>
+        <label>Waist<input id="morningWaist" name="waist" type="number" step="0.1" required /></label>
+        <label class="checkin-field-wide">Today’s affirmation<textarea id="morningAffirmation" name="affirmation" required></textarea></label>
+        <label class="checkin-field-wide">One thing I’m grateful for<textarea id="morningGratitude" name="gratitude" required></textarea></label>
+        <label class="checkin-field-wide">Morning notes<textarea id="morningNotes" name="morningNotes" required></textarea></label>
+      </div>
+      <p class="checkin-helper" id="morningCheckinHelper">Complete the archive first, darling.</p>
+      <button class="primary-btn checkin-submit" id="morningCheckinSubmit" type="submit" disabled>Begin Today’s Ritual</button>
+    </form>
+  </div>
+
+  <div class="checkin-modal optional-checkin" id="habitUpdateModal" hidden aria-modal="true" role="dialog" aria-labelledby="habitUpdateTitle">
+    <form class="checkin-card checkin-card--optional" id="habitUpdateForm">
+      <button class="checkin-close" id="habitUpdateClose" type="button" aria-label="Close habit update">×</button>
+      <div class="checkin-intro">
+        <p class="section-label">Little ritual check</p>
+        <h2 id="habitUpdateTitle">Which rituals have you completed so far?</h2>
+        <p>A gentle update for today’s archive.</p>
+      </div>
+      <div class="habit-update-list" id="habitUpdateList"></div>
+      <div class="checkin-actions">
+        <button class="text-button" id="habitUpdateSkip" type="button">Just checking the archive</button>
+        <button class="primary-btn" type="submit">Save habit update</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="checkin-modal evening-checkin" id="eveningReflectionModal" hidden aria-modal="true" role="dialog" aria-labelledby="eveningReflectionTitle">
+    <form class="checkin-card checkin-card--evening" id="eveningReflectionForm">
+      <div class="checkin-intro">
+        <p class="section-label">Mandatory evening reflection</p>
+        <h2 id="eveningReflectionTitle">Close the day properly.</h2>
+        <p>The glow-up archive needs the truth, not perfection.</p>
+      </div>
+      <div class="checkin-fields">
+        <label class="checkin-field-wide">How did today go?<textarea id="eveningDaySummary" name="daySummary" required></textarea></label>
+        <label class="checkin-field-wide">What did I complete?<textarea id="eveningCompleted" name="completed" required></textarea></label>
+        <label class="checkin-field-wide">What did I avoid or struggle with?<textarea id="eveningStruggled" name="struggledWith" required></textarea></label>
+        <label class="checkin-field-wide">What am I proud of?<textarea id="eveningProud" name="proudOf" required></textarea></label>
+        <label class="checkin-field-wide">What is tomorrow’s focus?<textarea id="eveningTomorrow" name="tomorrowFocus" required></textarea></label>
+        <label>Mood rating, optional<input id="eveningMood" name="mood" type="number" min="1" max="10" /></label>
+      </div>
+      <p class="checkin-helper" id="eveningReflectionHelper">The day is not closed until it is witnessed.</p>
+      <button class="primary-btn checkin-submit" id="eveningReflectionSubmit" type="submit" disabled>Archive Today</button>
+    </form>
+  </div>
+  <div class="toast" id="toast" aria-live="polite"></div>
+  <script src="script.js"></script>
+</body>
+</html>
