@@ -96,6 +96,11 @@ function withTimeout(promise, milliseconds, message) {
 function rowPayload(externalId, payload, extra = {}) {
   return { user_id: cloudUser.id, external_id: String(externalId), payload, updated_at: new Date().toISOString(), ...extra };
 }
+function mergeRecordRows(localKey, remoteRows = []) {
+  const local = loadRecords(localKey);
+  const remote = Object.fromEntries(remoteRows.map(row => [row.external_id, row.payload]));
+  return { ...local, ...remote };
+}
 function normalizedLocalRows() {
   const glowState = loadState();
   const blueState = loadWorkState();
@@ -158,8 +163,8 @@ function applyNormalizedCloudRows(rows = {}) {
   };
   put(STORAGE_KEY, glowState);
   put(WORK_STATE_KEY, blueState);
-  put(CHECKIN_KEY, Object.fromEntries((rows.glow_checkins || []).map(row => [row.external_id, row.payload])));
-  put(EVENING_KEY, Object.fromEntries((rows.evening_reflections || []).map(row => [row.external_id, row.payload])));
+  put(CHECKIN_KEY, mergeRecordRows(CHECKIN_KEY, rows.glow_checkins));
+  put(EVENING_KEY, mergeRecordRows(EVENING_KEY, rows.evening_reflections));
   put(EVENTS_KEY, (rows.glow_events || []).map(row => row.payload));
   put(CUSTOM_RITUALS_KEY, (rows.custom_rituals || []).map(row => row.payload));
   put(WORK_TASKS_KEY, (rows.work_tasks || []).map(row => row.payload));
@@ -194,16 +199,8 @@ async function uploadLocalArchive() {
         return;
       }
     }
-    if (table !== "profiles") {
-      const ids = records.map(record => record.external_id);
-      let deletion = cloudClient.from(table).delete().eq("user_id", cloudUser.id);
-      deletion = ids.length ? deletion.not("external_id", "in", `(${ids.map(id => `"${String(id).replaceAll('"', '\\"')}"`).join(",")})`) : deletion;
-      const { error: deleteError } = await deletion;
-      if (deleteError) {
-        updateAuthStatus(`Signed in, but ${table} cleanup needs setup: ${deleteError.message}`, true);
-        return;
-      }
-    }
+    // Never infer deletion from a device cache. Another signed-in device may
+    // legitimately hold records this browser has not downloaded yet.
   }
   nativeStorageSetItem.call(localStorage, CLOUD_LAST_REMOTE_KEY, updatedAt);
   nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, updatedAt);
@@ -391,6 +388,19 @@ async function signOutOfPrivateArchive() {
   document.getElementById("authPassword").value = "";
   updateAuthStatus("Signed out. Enter your username and password to reopen the private archive.");
   showAuthGate();
+}
+async function purgeCloudArchiveAfterHardReset() {
+  if (!cloudClient || !cloudUser) return;
+  try {
+    for (const table of CLOUD_TABLES.filter(name => name !== "profiles")) {
+      const { error } = await cloudClient.from(table).delete().eq("user_id", cloudUser.id);
+      if (error) throw new Error(`${table}: ${error.message}`);
+    }
+    await uploadLocalArchive();
+  } catch (error) {
+    console.error("Hard reset cloud cleanup deferred:", error);
+    updateCloudIndicator("Reset saved locally · cloud cleanup pending");
+  }
 }
 window.addEventListener("online", () => {
   if (!cloudUser) return;
@@ -794,6 +804,20 @@ function saveRecord(key, record) {
   const records = loadRecords(key);
   records[TODAY_KEY] = record;
   localStorage.setItem(key, JSON.stringify(records));
+  return uploadDailyRecordNow(key, record);
+}
+async function uploadDailyRecordNow(key, record) {
+  if (!cloudClient || !cloudUser || !cloudStartupComplete) return;
+  const table = key === CHECKIN_KEY ? "glow_checkins" : key === EVENING_KEY ? "evening_reflections" : null;
+  if (!table) return;
+  try {
+    const row = rowPayload(record.date || TODAY_KEY, record, { date_key: record.date || TODAY_KEY });
+    const { error } = await cloudClient.from(table).upsert(row, { onConflict: "user_id,external_id" });
+    if (error) throw error;
+    updateCloudIndicator(key === CHECKIN_KEY ? "Morning archive synced" : "Evening archive synced");
+  } catch (error) {
+    console.error(`${table} immediate sync deferred:`, error);
+  }
 }
 function localTime() {
   return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -1485,10 +1509,10 @@ function initialiseCheckinForms() {
   const morningHelper = document.getElementById("morningCheckinHelper");
   morningHelper.dataset.default = morningHelper.textContent;
   morningForm.addEventListener("input", () => validateRequiredForm(morningForm, morningButton, morningHelper, "The archive is ready. Begin when you are."));
-  morningForm.addEventListener("submit", event => {
+  morningForm.addEventListener("submit", async event => {
     event.preventDefault();
     const data = new FormData(morningForm);
-    saveRecord(CHECKIN_KEY, {
+    await saveRecord(CHECKIN_KEY, {
       date: TODAY_KEY,
       time: localTime(),
       weight: data.get("weight"),
@@ -1511,10 +1535,10 @@ function initialiseCheckinForms() {
   const eveningHelper = document.getElementById("eveningReflectionHelper");
   eveningHelper.dataset.default = eveningHelper.textContent;
   eveningForm.addEventListener("input", () => validateRequiredForm(eveningForm, eveningButton, eveningHelper, "The day is ready to be witnessed."));
-  eveningForm.addEventListener("submit", event => {
+  eveningForm.addEventListener("submit", async event => {
     event.preventDefault();
     const data = new FormData(eveningForm);
-    saveRecord(EVENING_KEY, {
+    await saveRecord(EVENING_KEY, {
       date: TODAY_KEY,
       time: localTime(),
       mood: data.get("mood") ? Number(data.get("mood")) : null,
@@ -1648,6 +1672,7 @@ function startResetHold() {
     renderMeasurements();
     status.textContent = "Ritual archive erased. New era.";
     button.classList.remove("holding");
+    purgeCloudArchiveAfterHardReset();
     runDailyCheckinPriority();
   }, 4000);
 }
@@ -1924,9 +1949,14 @@ function accountProfile() {
 }
 async function uploadAccountProfileNow(profile) {
   if (!cloudClient || !cloudUser) return false;
-  const profileRow = normalizedLocalRows().profiles[0];
-  profileRow.username = profile.username;
-  profileRow.payload.account = profile;
+  const { data: remote, error: fetchError } = await cloudClient.from("profiles").select("payload").eq("user_id", cloudUser.id).maybeSingle();
+  if (fetchError) throw fetchError;
+  const profileRow = {
+    user_id: cloudUser.id,
+    username: profile.username,
+    payload: { ...(remote?.payload || {}), account: profile },
+    updated_at: new Date().toISOString()
+  };
   const { error } = await cloudClient.from("profiles").upsert(profileRow, { onConflict: "user_id" });
   if (error) throw error;
   updateCloudIndicator("Princess profile synced");
@@ -1935,7 +1965,7 @@ async function uploadAccountProfileNow(profile) {
 async function saveAccountProfile(profile) {
   accountProfileDraft = profile;
   try {
-    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+    nativeStorageSetItem.call(localStorage, PROFILE_CACHE_KEY, JSON.stringify(profile));
   } catch (error) {
     console.warn("Profile cache unavailable; continuing with cloud save:", error);
   }
