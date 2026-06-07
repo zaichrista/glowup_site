@@ -292,6 +292,19 @@ function eventReadiness(event) {
   }, 0);
   return total ? Math.round(completed / total * 100) : 0;
 }
+function eventBestStreak(event) {
+  const start = dateKey(new Date(event.createdAt || `${TODAY_KEY}T00:00:00`));
+  const end = event.date;
+  const keys = Object.keys(state.days).filter(key => key >= start && key <= end && Object.values(state.days[key]?.checked || {}).some(Boolean)).sort();
+  let best = 0, current = 0, previous = null;
+  keys.forEach(key => {
+    const date = parseDate(key);
+    current = previous && (date - previous) / 86400000 === 1 ? current + 1 : 1;
+    best = Math.max(best, current);
+    previous = date;
+  });
+  return best;
+}
 function readinessLabel(score) {
   if (score <= 30) return "The ritual has begun.";
   if (score <= 55) return "Momentum building.";
@@ -391,7 +404,7 @@ function monthStats() {
 function renderHabitBoard() {
   const board = document.getElementById("habitBoard");
   if (!board) return;
-  const visible = activeHabits().filter(habit => {
+  const visible = (habitFilter === "all" ? habits : activeHabits()).filter(habit => {
     const done = isComplete(habit);
     const status = dueStatus(habit);
     if (habitFilter === "today") return habit.frequency === "daily" || !done;
@@ -442,6 +455,7 @@ function renderSummary() {
   const week = weekStats();
   const month = monthStats();
   const levelInfo = currentLevel();
+  const nextEvent = events.filter(event => event.status !== "archived" && daysUntil(event.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
   const items = [
     ["Rituals due", incomplete.length],
     ["Completed today", Object.values(state.days[TODAY_KEY]?.checked || {}).filter(Boolean).length],
@@ -451,7 +465,10 @@ function renderSummary() {
     ["Weekly completion", `${week.percentage}%`],
     ["Monthly completion", `${month.percentage}%`]
   ];
-  summary.innerHTML = items.map(([label, value]) => `<article class="summary-tile"><span>${label}</span><strong>${value}</strong></article>`).join("");
+  summary.innerHTML = items.map(([label, value]) => `<article class="summary-tile"><span>${label}</span><strong>${value}</strong></article>`).join("") +
+    `<article class="summary-tile summary-dday"><span>Next D-Day</span><strong>${nextEvent ? escapeHTML(nextEvent.name) : "Create your first D-day"}</strong><button type="button" ${nextEvent ? `data-summary-event="${nextEvent.id}"` : "data-summary-create-event"}>${nextEvent ? `${eventReadiness(nextEvent)}% ready · Open Event` : "Create a D-Day"}</button></article>`;
+  summary.querySelector("[data-summary-event]")?.addEventListener("click", button => openEventDetail(button.currentTarget.dataset.summaryEvent));
+  summary.querySelector("[data-summary-create-event]")?.addEventListener("click", () => openEventEditor());
 }
 
 function renderProgress() {
@@ -582,6 +599,298 @@ function moveTracker(direction) {
   if (trackerView === "archive") return;
   trackerDate = trackerView === "month" ? new Date(trackerDate.getFullYear(), trackerDate.getMonth() + direction, 1) : addDays(trackerDate, direction * 7);
   renderTracker();
+}
+
+function escapeHTML(value = "") {
+  return String(value).replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
+}
+function renderEvents() {
+  const grid = document.getElementById("eventGrid");
+  if (!grid) return;
+  document.querySelectorAll(".event-tab").forEach(button => button.classList.toggle("active", button.dataset.eventView === eventView));
+  const shown = events.filter(event => eventView === "archived" ? event.status === "archived" : event.status !== "archived").sort((a, b) => a.date.localeCompare(b.date));
+  grid.innerHTML = shown.length ? shown.map(renderEventCard).join("") : `<div class="event-empty"><span>✦</span><h3>${eventView === "archived" ? "No archived reveals yet." : "No D-days yet."}</h3><p>${eventView === "archived" ? "Your completed transformation folders will live here." : "Choose the moment you want to meet as your best self."}</p></div>`;
+  grid.querySelectorAll("[data-event-id]").forEach(button => button.addEventListener("click", () => openEventDetail(button.dataset.eventId)));
+  renderNextDday();
+}
+function renderEventCard(event) {
+  const timing = eventTiming(event);
+  const readiness = event.finalReadiness ?? eventReadiness(event);
+  const critical = (event.ritualLinks || []).filter(link => link.importance === "Critical").filter(link => {
+    const habit = habits.find(item => item.id === link.ritualId);
+    return habit && !isComplete(habit);
+  }).length;
+  return `<button class="event-card urgency-${timing.state}" data-event-id="${event.id}" type="button">
+    <div class="event-card-top"><span>${escapeHTML(event.category || "Custom")}</span><span>${event.status === "archived" ? "Archived" : timing.state === "past" ? "Past" : "Upcoming"}</span></div>
+    <h3>${escapeHTML(event.name)}</h3>
+    <p class="event-countdown">${timing.copy}</p>
+    <div class="event-readiness-bar"><div style="width:${readiness}%"></div></div>
+    <div class="event-card-bottom"><strong>Readiness: ${readiness}%</strong><span>${critical} critical remaining</span></div>
+  </button>`;
+}
+function renderNextDday() {
+  const container = document.getElementById("nextDdayCard");
+  if (!container) return;
+  const next = events.filter(event => event.status !== "archived" && daysUntil(event.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
+  if (!next) {
+    container.innerHTML = `<div><p class="section-label">Next D-Day</p><h3>Create your first D-day.</h3><p>No deadline, no pressure. Choose a moment worth preparing for.</p></div><button class="secondary-btn" data-create-event type="button">Create a D-Day</button>`;
+  } else {
+    const readiness = eventReadiness(next);
+    const critical = (next.ritualLinks || []).filter(link => link.importance === "Critical").map(link => habits.find(habit => habit.id === link.ritualId)).filter(habit => habit && !isComplete(habit)).slice(0, 3);
+    container.innerHTML = `<div><p class="section-label">Next D-Day</p><h3>${escapeHTML(next.name)}</h3><p>${eventTiming(next).copy} · Readiness ${readiness}%</p><span>${critical.length ? `Critical focus: ${critical.map(item => item.title).join(", ")}` : "Critical rituals handled."}</span></div><button class="secondary-btn" data-next-event="${next.id}" type="button">Open Event</button>`;
+  }
+  container.querySelector("[data-create-event]")?.addEventListener("click", () => openEventEditor());
+  container.querySelector("[data-next-event]")?.addEventListener("click", button => openEventDetail(button.currentTarget.dataset.nextEvent));
+}
+function openEventDetail(id) {
+  selectedEventId = id;
+  const event = eventById(id);
+  const detail = document.getElementById("eventDetail");
+  if (!event || !detail) return;
+  const timing = eventTiming(event);
+  const readiness = event.finalReadiness ?? eventReadiness(event);
+  const links = event.ritualLinks || [];
+  const created = new Date(event.createdAt || `${TODAY_KEY}T00:00:00`);
+  const target = parseDate(event.date);
+  const totalWindow = Math.max(1, Math.ceil((target - created) / 86400000));
+  const elapsed = Math.max(0, Math.min(totalWindow, Math.ceil((new Date() - created) / 86400000)));
+  const prep = Math.round(elapsed / totalWindow * 100);
+  const categoryCounts = {};
+  links.forEach(link => {
+    const habit = habits.find(item => item.id === link.ritualId);
+    if (habit && isComplete(habit)) categoryCounts[categoryMeta[habit.category].label] = (categoryCounts[categoryMeta[habit.category].label] || 0) + 1;
+  });
+  detail.hidden = false;
+  detail.innerHTML = `<div class="event-detail-hero urgency-${timing.state}">
+    <button class="event-detail-close" type="button">← All D-Days</button><p class="section-label">${escapeHTML(event.category)}</p><h2>${escapeHTML(event.name)}</h2>
+    <p class="event-detail-countdown">${timing.copy}</p><blockquote>${escapeHTML(event.motivation)}</blockquote>
+    <div class="event-detail-actions"><button class="secondary-btn" data-edit-event="${event.id}" type="button">Edit Event</button>${event.status !== "archived" ? `<button class="secondary-btn" data-archive-event="${event.id}" type="button">Archive Event</button>` : ""}</div>
+  </div>
+  <div class="event-metrics">
+    <article><span>Readiness</span><strong>${readiness}%</strong><p>${readinessLabel(readiness)}</p></article>
+    <article><span>Days remaining</span><strong>${Math.max(0, timing.days)}</strong><p>${timing.days <= 2 ? "The reveal is close." : "This glow-up has a deadline."}</p></article>
+    <article><span>Preparation elapsed</span><strong>${prep}%</strong><p>Preparation is becoming visible.</p></article>
+    <article><span>Critical complete</span><strong>${links.filter(link => { const habit = habits.find(item => item.id === link.ritualId); return link.importance === "Critical" && habit && isComplete(habit); }).length}/${links.filter(link => link.importance === "Critical").length}</strong><p>Deadline near. Discipline prettier.</p></article>
+    <article><span>Best event streak</span><strong>${eventBestStreak(event)}</strong><p>Consistency made visible.</p></article>
+  </div>
+  <div class="event-story"><article><p class="section-label">Main goal</p><h3>${escapeHTML(event.goal)}</h3></article><article><p class="section-label">Atelier note</p><h3>${eventMotivation(event.category)}</h3></article></div>
+  <div class="event-notes"><p class="section-label">Preparation notes</p><div>
+    <article><strong>Desired feeling</strong><p>${escapeHTML(event.desiredFeeling || "To feel calm, polished, and ready.")}</p></article>
+    <article><strong>Outfit</strong><p>${escapeHTML(event.outfitNotes || "No outfit notes yet.")}</p></article>
+    <article><strong>Body</strong><p>${escapeHTML(event.bodyNotes || "No body notes yet.")}</p></article>
+    <article><strong>Beauty</strong><p>${escapeHTML(event.beautyNotes || "No beauty notes yet.")}</p></article>
+    <article><strong>Confidence</strong><p>${escapeHTML(event.confidenceNotes || "No confidence notes yet.")}</p></article>
+    <article><strong>Private</strong><p>${escapeHTML(event.privateNotes || "No private notes yet.")}</p></article>
+  </div></div>
+  <div class="event-linked-list"><h3>Selected rituals</h3>${links.length ? links.map(link => {
+    const habit = habits.find(item => item.id === link.ritualId);
+    return habit ? `<article class="${isComplete(habit) ? "done" : ""}"><span>${categoryMeta[habit.category].icon}</span><div><strong>${escapeHTML(habit.title)}</strong><p>${escapeHTML(link.note || habit.why)}</p></div><em>${link.importance}</em></article>` : "";
+  }).join("") : `<p>No rituals selected yet. Edit the event to build the preparation plan.</p>`}</div>
+  ${event.postEventReflection ? `<div class="event-reflection"><p class="section-label">Post-event reflection</p><h3>${escapeHTML(event.postEventReflection.felt)}</h3><p>${escapeHTML(event.postEventReflection.learned)}</p></div>` : ""}
+  <div class="event-category-balance"><p class="section-label">Completed ritual categories</p><p>${Object.entries(categoryCounts).map(([name, count]) => `${name}: ${count}`).join(" · ") || "The first completion will begin this chart."}</p></div>`;
+  detail.querySelector(".event-detail-close").addEventListener("click", () => { detail.hidden = true; selectedEventId = null; });
+  detail.querySelector("[data-edit-event]")?.addEventListener("click", () => openEventEditor(id));
+  detail.querySelector("[data-archive-event]")?.addEventListener("click", () => openEventArchive(id));
+  detail.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function openAtelierModal(id) { document.getElementById(id).hidden = false; document.body.classList.add("modal-locked"); }
+function closeAtelierModal(id) { document.getElementById(id).hidden = true; document.body.classList.remove("modal-locked"); }
+function renderEventRitualPicker(event) {
+  const links = new Map((event?.ritualLinks || []).map(link => [link.ritualId, link]));
+  document.getElementById("eventRitualPicker").innerHTML = activeHabits().map(habit => {
+    const link = links.get(habit.id);
+    return `<div class="event-picker-row"><label><input type="checkbox" data-event-ritual="${habit.id}" ${link ? "checked" : ""}/><span>${categoryMeta[habit.category].icon}</span><strong>${escapeHTML(habit.title)}</strong></label><select data-link-importance="${habit.id}"><option ${link?.importance === "Low" ? "selected" : ""}>Low</option><option ${!link || link.importance === "Medium" ? "selected" : ""}>Medium</option><option ${link?.importance === "High" ? "selected" : ""}>High</option><option ${link?.importance === "Critical" ? "selected" : ""}>Critical</option></select><select data-link-frequency="${habit.id}"><option value="">Use main frequency</option>${["daily","weekly","biweekly","monthly","one-time","custom"].map(value => `<option value="${value}" ${link?.frequencyOverride === value ? "selected" : ""}>${frequencyLabel(value)}</option>`).join("")}</select><input data-link-note="${habit.id}" placeholder="Event-specific note" value="${escapeHTML(link?.note || "")}" /></div>`;
+  }).join("");
+}
+function openEventEditor(id = "") {
+  const form = document.getElementById("eventEditorForm");
+  const event = eventById(id);
+  form.reset();
+  form.elements.eventId.value = event?.id || "";
+  ["name", "date", "category", "desiredFeeling", "goal", "motivation", "outfitNotes", "bodyNotes", "beautyNotes", "confidenceNotes", "privateNotes"].forEach(name => {
+    if (event && form.elements[name]) form.elements[name].value = event[name] || "";
+  });
+  document.getElementById("eventEditorTitle").textContent = event ? "Edit the D-Day." : "Create a D-Day.";
+  renderEventRitualPicker(event);
+  openAtelierModal("eventEditorModal");
+}
+function openEventArchive(id) {
+  const form = document.getElementById("eventArchiveForm");
+  form.reset();
+  form.elements.eventId.value = id;
+  openAtelierModal("eventArchiveModal");
+}
+function recommendRitual(title) {
+  const text = title.toLowerCase();
+  const extreme = /(starve|no food|punish|burn everything|lose 5kg|no carbs forever|laxative|skip meals)/.test(text);
+  const rules = [
+    [/(posture|shoulder)/, "posture", "daily", "Critical", "Opens the chest, improves silhouette, and helps clothes sit more elegantly."],
+    [/(protein)/, "food", "daily", "High", "Protects muscle, supports curves, and helps body recomposition without crash dieting."],
+    [/(water|hydrate)/, "water", "daily", "High", "Supports digestion, skin, energy, and helps reduce water retention."],
+    [/(glute|hip thrust|rdl|kickback)/, "glutes", "weekly", "High", "Builds lower-body shape and supports strong, focused training."],
+    [/(hair|scalp|oil|mask)/, "hair", "weekly", "Medium", "Protects length, reduces breakage, and supports stronger-looking hair over time."],
+    [/(sleep)/, "sleep", "daily", "Critical", "Supports recovery, appetite regulation, skin, mood, and training results."],
+    [/(walk|steps)/, "body", "daily", "High", "Supports health and body composition gently without sacrificing curves."],
+    [/(dissertation|portfolio|brand|career)/, "career", "daily", "High", "Turns the glow-up into a life upgrade, not just a body project."],
+    [/(pray|god|journal|gratitude)/, "soul", "daily", "Medium", "Keeps the transformation grounded, calm, and emotionally honest."]
+  ];
+  const match = rules.find(([pattern]) => pattern.test(text));
+  return {
+    category: match?.[1] || "custom", frequency: match?.[2] || "weekly", importance: match?.[3] || "Medium",
+    why: match?.[4] || "Makes this intention visible, repeatable, and easier to archive.",
+    warning: extreme ? "This ritual sounds extreme. Let’s make it effective without making it destructive. Try a protein-first meal, steady movement, or a realistic recovery ritual instead." : ""
+  };
+}
+function openRitualEditor(id = "") {
+  const form = document.getElementById("ritualEditorForm");
+  const item = customRituals.find(ritual => ritual.id === id);
+  form.reset();
+  form.elements.ritualId.value = item?.id || "";
+  ["title", "category", "frequency", "importance", "why", "notes", "startDate", "endDate", "targetCount"].forEach(name => {
+    if (item && form.elements[name]) form.elements[name].value = item[name] || "";
+  });
+  form.elements.linkedEvent.value = item?.linkedEventIds?.[0] || "";
+  document.getElementById("ritualEditorTitle").textContent = item ? "Edit the Ritual." : "Add a Ritual.";
+  updateRitualRecommendation();
+  openAtelierModal("ritualEditorModal");
+}
+function updateRitualRecommendation() {
+  const form = document.getElementById("ritualEditorForm");
+  const suggestion = recommendRitual(form.elements.title.value);
+  const box = document.getElementById("ritualRecommendation");
+  box.classList.toggle("warning", !!suggestion.warning);
+  box.innerHTML = suggestion.warning || `I recommend making this a <strong>${frequencyLabel(suggestion.frequency)}</strong>. Suggested category: <strong>${categoryMeta[suggestion.category].label}</strong>. Why it matters: ${suggestion.why} <button type="button" id="applyRitualSuggestion">Apply suggestion</button>`;
+  document.getElementById("applyRitualSuggestion")?.addEventListener("click", () => {
+    form.elements.category.value = suggestion.category;
+    form.elements.frequency.value = suggestion.frequency;
+    form.elements.importance.value = suggestion.importance;
+    form.elements.why.value = suggestion.why;
+  });
+}
+function syncCustomRituals() {
+  habits = habits.filter(habit => !habit.custom);
+  habits.push(...customRituals.filter(item => !item.deleted).map(item => ({ ...item, custom: true, description: item.notes || item.why || "A ritual designed for your life." })));
+  saveCollection(CUSTOM_RITUALS_KEY, customRituals);
+}
+function toggleCustomRitualPause(id) {
+  const item = customRituals.find(ritual => ritual.id === id);
+  if (!item) return;
+  item.paused = !item.paused;
+  syncCustomRituals();
+  renderAll();
+}
+function deleteCustomRitual(id) {
+  const item = customRituals.find(ritual => ritual.id === id);
+  if (!item) return;
+  item.deleted = true;
+  events.forEach(event => event.ritualLinks = (event.ritualLinks || []).filter(link => link.ritualId !== id));
+  saveCollection(EVENTS_KEY, events);
+  syncCustomRituals();
+  renderAll();
+}
+function initialiseAtelier() {
+  const categorySelect = document.getElementById("customRitualCategory");
+  categorySelect.innerHTML = Object.entries(categoryMeta).map(([key, meta]) => `<option value="${key}">${meta.label}</option>`).join("");
+  const linkedEventSelect = document.getElementById("ritualEditorForm").elements.linkedEvent;
+  linkedEventSelect.innerHTML = `<option value="">None</option>${events.filter(event => event.status !== "archived").map(event => `<option value="${event.id}">${escapeHTML(event.name)}</option>`).join("")}`;
+  document.getElementById("openEventCreator").addEventListener("click", () => openEventEditor());
+  document.getElementById("openRitualCreator").addEventListener("click", () => openRitualEditor());
+  document.querySelectorAll("[data-close-atelier]").forEach(button => button.addEventListener("click", () => closeAtelierModal(button.dataset.closeAtelier)));
+  document.querySelectorAll(".atelier-modal").forEach(modal => modal.addEventListener("click", event => {
+    if (event.target === modal) closeAtelierModal(modal.id);
+  }));
+  document.querySelectorAll(".event-tab").forEach(button => button.addEventListener("click", () => {
+    eventView = button.dataset.eventView;
+    document.getElementById("eventDetail").hidden = true;
+    renderEvents();
+  }));
+  document.getElementById("eventEditorForm").addEventListener("submit", event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const existing = eventById(data.get("eventId"));
+    const ritualLinks = [...form.querySelectorAll("[data-event-ritual]:checked")].map(input => ({
+      ritualId: input.dataset.eventRitual,
+      importance: form.querySelector(`[data-link-importance="${input.dataset.eventRitual}"]`).value,
+      note: form.querySelector(`[data-link-note="${input.dataset.eventRitual}"]`).value.trim(),
+      frequencyOverride: form.querySelector(`[data-link-frequency="${input.dataset.eventRitual}"]`).value || null
+    }));
+    const record = {
+      ...(existing || {}),
+      id: existing?.id || `event_${Date.now()}`,
+      name: data.get("name").trim(), date: data.get("date"), category: data.get("category"),
+      goal: data.get("goal").trim(), motivation: data.get("motivation").trim(), desiredFeeling: data.get("desiredFeeling").trim(),
+      outfitNotes: data.get("outfitNotes").trim(), bodyNotes: data.get("bodyNotes").trim(), beautyNotes: data.get("beautyNotes").trim(),
+      confidenceNotes: data.get("confidenceNotes").trim(), privateNotes: data.get("privateNotes").trim(),
+      createdAt: existing?.createdAt || new Date().toISOString(), status: existing?.status || "active", archivedAt: existing?.archivedAt || null,
+      postEventReflection: existing?.postEventReflection || null, ritualLinks
+    };
+    if (existing) events[events.findIndex(item => item.id === existing.id)] = record;
+    else events.push(record);
+    saveCollection(EVENTS_KEY, events);
+    closeAtelierModal("eventEditorModal");
+    initialiseEventSelect();
+    renderAll();
+    openEventDetail(record.id);
+    showToast("D-Day saved. Preparation is becoming visible.");
+  });
+  const ritualForm = document.getElementById("ritualEditorForm");
+  ritualForm.elements.title.addEventListener("input", updateRitualRecommendation);
+  ritualForm.addEventListener("submit", event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const existing = customRituals.find(item => item.id === data.get("ritualId"));
+    const suggestion = recommendRitual(data.get("title"));
+    if (suggestion.warning && !data.get("why").trim()) {
+      showToast("Let’s make this ritual effective without making it destructive.");
+      return;
+    }
+    const linkedEventIds = data.get("linkedEvent") ? [data.get("linkedEvent")] : [];
+    const record = {
+      ...(existing || {}), id: existing?.id || `custom_${Date.now()}`, title: data.get("title").trim(),
+      category: data.get("category"), frequency: data.get("frequency"), importance: data.get("importance"),
+      why: data.get("why").trim() || suggestion.why, notes: data.get("notes").trim(),
+      startDate: data.get("startDate"), endDate: data.get("endDate"), targetCount: Number(data.get("targetCount") || 1),
+      linkedEventIds, paused: existing?.paused || false, createdAt: existing?.createdAt || new Date().toISOString()
+    };
+    if (existing) customRituals[customRituals.findIndex(item => item.id === existing.id)] = record;
+    else customRituals.push(record);
+    events.forEach(item => item.ritualLinks = (item.ritualLinks || []).filter(link => link.ritualId !== record.id));
+    linkedEventIds.forEach(id => {
+      const linkedEvent = eventById(id);
+      if (linkedEvent) {
+        linkedEvent.ritualLinks ||= [];
+        linkedEvent.ritualLinks.push({ ritualId: record.id, importance: record.importance, note: record.notes, frequencyOverride: null });
+      }
+    });
+    saveCollection(EVENTS_KEY, events);
+    syncCustomRituals();
+    closeAtelierModal("ritualEditorModal");
+    renderAll();
+    showToast("Custom ritual saved. The life-command system noticed.");
+  });
+  document.getElementById("eventArchiveForm").addEventListener("submit", event => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const item = eventById(data.get("eventId"));
+    if (!item) return;
+    item.finalReadiness = eventReadiness(item);
+    item.status = "archived";
+    item.archivedAt = new Date().toISOString();
+    item.postEventReflection = { felt: data.get("felt").trim(), worked: data.get("worked").trim(), repeat: data.get("repeat").trim(), learned: data.get("learned").trim() };
+    saveCollection(EVENTS_KEY, events);
+    closeAtelierModal("eventArchiveModal");
+    initialiseEventSelect();
+    eventView = "archived";
+    renderAll();
+    openEventDetail(item.id);
+    showToast("The reveal has been archived.");
+  });
+}
+function initialiseEventSelect() {
+  const select = document.getElementById("ritualEditorForm")?.elements.linkedEvent;
+  if (select) select.innerHTML = `<option value="">None</option>${events.filter(event => event.status !== "archived").map(event => `<option value="${event.id}">${escapeHTML(event.name)}</option>`).join("")}`;
 }
 
 function renderReview() {
@@ -796,6 +1105,12 @@ function startResetHold() {
     localStorage.removeItem(CHECKIN_KEY);
     localStorage.removeItem(HABIT_UPDATE_KEY);
     localStorage.removeItem(EVENING_KEY);
+    localStorage.removeItem(EVENTS_KEY);
+    localStorage.removeItem(CUSTOM_RITUALS_KEY);
+    events = [];
+    customRituals = [];
+    syncCustomRituals();
+    initialiseEventSelect();
     state = defaultState();
     ensureDay(TODAY_KEY);
     saveState();
@@ -831,6 +1146,7 @@ function renderAll() {
   renderTracker();
   renderReview();
   renderDailyArchive();
+  renderEvents();
 }
 
 const cursor = document.querySelector(".cursor");
@@ -914,6 +1230,7 @@ if (currentSection) observer.observe(currentSection);
 renderAll();
 renderMeasurements();
 initialiseCheckinForms();
+initialiseAtelier();
 applyTimeTheme();
 setInterval(applyTimeTheme, 5 * 60 * 1000);
 bindCursorLabels();
