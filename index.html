@@ -32,6 +32,7 @@
     <nav class="nav glow-nav" aria-label="Glow-Up navigation">
       <a href="#home" data-cursor="track">Today</a>
       <a href="#tracker" data-cursor="track">Tracker</a>
+      <a href="#calendar" data-cursor="plan">Calendar</a>
       <a href="#rituals" data-cursor="build">Rituals</a>
       <a href="#events" data-cursor="reveal">Events</a>
       <a href="#review" data-cursor="review">Review</a>
@@ -41,6 +42,7 @@
     <nav class="nav work-nav" aria-label="Work navigation" hidden>
       <a href="#work-home">Today</a>
       <a href="#work-tasks">Tasks</a>
+      <a href="#calendar">Calendar</a>
       <a href="#work-events">Deadlines</a>
       <a href="#work-review">Review</a>
     </nav>
@@ -322,6 +324,91 @@
     </section>
   </main>
 
+  <main id="calendarMode" class="mode-page mode-page--calendar" hidden>
+    <section id="calendar" class="calendar-hero section">
+      <div class="hero-copy">
+        <p class="kicker">Time · Ritual · Deadline · Becoming</p>
+        <h1><span>The Archive</span><span>Calendar</span></h1>
+        <p class="intro">A visual map of the rituals, deadlines, and D-days building your life.</p>
+        <p class="hero-label">Day · Week · Month · Life Map</p>
+        <div class="hero-copy-note">This is where the glow-up becomes scheduled.</div>
+      </div>
+    </section>
+
+    <section class="calendar-summary section">
+      <div class="summary-cards">
+        <article class="summary-card">
+          <p class="section-label">Today</p>
+          <strong id="todaySummaryCount">0 items</strong>
+          <p id="todaySummaryText">Nothing scheduled.</p>
+        </article>
+        <article class="summary-card">
+          <p class="section-label">This week</p>
+          <strong id="weekSummaryCount">0 deadlines</strong>
+          <p id="weekSummaryText">Plan ahead.</p>
+        </article>
+        <article class="summary-card">
+          <p class="section-label">Next event</p>
+          <strong id="nextEventDate">—</strong>
+          <p id="nextEventName">No events scheduled.</p>
+        </article>
+        <article class="summary-card">
+          <p class="section-label">Completed today</p>
+          <strong id="completedTodayCount">0 / 0</strong>
+          <p id="completedTodayText">Keep going.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="calendar-main section">
+      <div class="calendar-toolbar">
+        <div class="calendar-controls">
+          <button class="calendar-nav-btn" id="calendarPrev" aria-label="Previous period">←</button>
+          <strong id="calendarPeriodLabel">This week</strong>
+          <button class="calendar-nav-btn" id="calendarNext" aria-label="Next period">→</button>
+          <button class="calendar-today-btn" id="calendarToday">Today</button>
+        </div>
+        <div class="calendar-view-switcher">
+          <button class="calendar-view-btn active" data-calendar-view="week">Week</button>
+          <button class="calendar-view-btn" data-calendar-view="day">Day</button>
+          <button class="calendar-view-btn" data-calendar-view="month">Month</button>
+        </div>
+      </div>
+
+      <div class="calendar-filters">
+        <div class="filter-section">
+          <button class="filter-btn active" data-calendar-filter="all">All</button>
+          <button class="filter-btn" data-calendar-filter="glow">Glow</button>
+          <button class="filter-btn" data-calendar-filter="work">Work</button>
+          <button class="filter-btn" data-calendar-filter="events">Events</button>
+          <button class="filter-btn" data-calendar-filter="deadlines">Deadlines</button>
+        </div>
+        <div class="filter-section">
+          <button class="filter-btn" data-calendar-filter="rituals">Rituals</button>
+          <button class="filter-btn" data-calendar-filter="habits">Habits</button>
+          <button class="filter-btn" data-calendar-filter="completed">Done</button>
+          <button class="filter-btn" data-calendar-filter="incomplete">Open</button>
+        </div>
+      </div>
+
+      <div id="calendarViewContainer" class="calendar-view-container">
+        <!-- Week/Day/Month views render here -->
+      </div>
+
+      <button class="primary-btn calendar-add-btn" id="calendarAddBtn">+ Add to Calendar</button>
+    </section>
+
+    <div class="calendar-day-panel" id="calendarDayPanel" hidden>
+      <button class="checkin-close" id="calendarDayPanelClose" aria-label="Close day panel">×</button>
+      <h3 id="calendarDayPanelDate">June 16, 2026</h3>
+      <div class="calendar-day-items" id="calendarDayItems"></div>
+      <div class="calendar-day-notes">
+        <label>Plan for this day<textarea id="calendarDayNotesInput" placeholder="What's the intention for today?"></textarea></label>
+        <button class="secondary-btn" id="calendarDayNotesSave">Save day plan</button>
+      </div>
+    </div>
+  </main>
+
   <div class="level-modal" id="levelModal" hidden aria-live="polite">
     <div class="level-modal-card">
       <button class="level-modal-close" id="levelModalClose" aria-label="Close level-up message">×</button>
@@ -395,6 +482,59 @@
       </div>
       <button class="primary-btn" type="submit">Archive Event</button>
     </form>
+  </div>
+
+  <div class="atelier-modal" id="calendarItemEditorModal" hidden role="dialog" aria-modal="true" aria-labelledby="calendarItemEditorTitle">
+    <form class="atelier-form atelier-form--calendar" id="calendarItemEditorForm">
+      <button class="checkin-close" type="button" id="calendarItemEditorClose">×</button>
+      <p class="section-label">Calendar archive</p>
+      <h2 id="calendarItemEditorTitle">Add to Calendar.</h2>
+      <input type="hidden" id="calendarItemEditorId" name="itemId" />
+      <div class="atelier-fields">
+        <label class="atelier-wide">Title<input name="title" required /></label>
+        <label>Type<select name="type" required>
+          <option value="">Select type</option>
+          <option value="event">Event</option>
+          <option value="reminder">Reminder</option>
+          <option value="note">Note</option>
+          <option value="appointment">Appointment</option>
+          <option value="planning">Planning Block</option>
+        </select></label>
+        <label>Mode<select name="mode" required>
+          <option value="">Select mode</option>
+          <option value="glow">Glow</option>
+          <option value="work">Work</option>
+          <option value="personal">Personal</option>
+        </select></label>
+        <label>Date<input name="date" type="date" required /></label>
+        <label>Time (optional)<input name="time" type="time" /></label>
+        <label>End time (optional)<input name="endTime" type="time" /></label>
+        <label>Recurrence<select name="recurrence">
+          <option value="none">None</option>
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Biweekly</option>
+          <option value="monthly">Monthly</option>
+          <option value="custom">Custom</option>
+        </select></label>
+        <label>Importance<select name="importance">
+          <option value="low">Low</option>
+          <option value="medium">Medium</option>
+          <option value="high">High</option>
+          <option value="critical">Critical</option>
+        </select></label>
+        <label class="atelier-wide">Notes<textarea name="notes" placeholder="Add any additional context..."></textarea></label>
+      </div>
+      <button class="primary-btn" type="submit">Save to Calendar</button>
+    </form>
+  </div>
+
+  <div class="atelier-modal calendar-item-detail" id="calendarItemDetailModal" hidden role="dialog" aria-modal="true" aria-labelledby="calendarItemDetailTitle">
+    <div class="calendar-item-detail-content">
+      <button class="checkin-close" id="calendarItemDetailClose">×</button>
+      <div id="calendarItemDetailBody"></div>
+      <div class="calendar-item-detail-actions" id="calendarItemDetailActions"></div>
+    </div>
   </div>
 
   <div class="atelier-modal work-modal" id="workTaskEditorModal" hidden role="dialog" aria-modal="true" aria-labelledby="workTaskEditorTitle">

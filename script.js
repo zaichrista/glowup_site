@@ -26,6 +26,10 @@ const WORK_STATE_KEY = "glowWorkState.v1";
 const WORK_TASKS_KEY = "workTasks";
 const WORK_EVENTS_KEY = "workEvents";
 const MODE_MIGRATION_KEY = "glowTwoModeMigration.v1";
+const CALENDAR_ITEMS_KEY = "calendarItems";
+const CALENDAR_SCHEDULE_OVERRIDES_KEY = "calendarScheduleOverrides";
+const CALENDAR_COMPLETIONS_KEY = "calendarItemCompletions";
+const CALENDAR_DAY_NOTES_KEY = "calendarDayNotes";
 const TODAY_KEY = dateKey(new Date());
 const TIME_CLASSES = ["time-dawn", "time-morning", "time-midday", "time-afternoon", "time-sunset", "time-evening", "time-night"];
 
@@ -1194,6 +1198,10 @@ function startResetHold() {
     localStorage.removeItem(WORK_TASKS_KEY);
     localStorage.removeItem(WORK_EVENTS_KEY);
     localStorage.removeItem(MODE_MIGRATION_KEY);
+    localStorage.removeItem(CALENDAR_ITEMS_KEY);
+    localStorage.removeItem(CALENDAR_SCHEDULE_OVERRIDES_KEY);
+    localStorage.removeItem(CALENDAR_COMPLETIONS_KEY);
+    localStorage.removeItem(CALENDAR_DAY_NOTES_KEY);
     events = [];
     customRituals = [];
     syncCustomRituals();
@@ -1203,6 +1211,10 @@ function startResetHold() {
     customWorkTasks = [];
     workTasks = [...builtInWorkTasks];
     workEvents = [];
+    calendarItems = [];
+    calendarScheduleOverrides = {};
+    calendarItemCompletions = {};
+    calendarDayNotes = {};
     saveWorkState();
     saveCollection(WORK_TASKS_KEY, customWorkTasks);
     saveCollection(WORK_EVENTS_KEY, workEvents);
@@ -1671,6 +1683,564 @@ resetBtn?.addEventListener("mousedown", startResetHold);
 resetBtn?.addEventListener("touchstart", startResetHold, { passive: true });
 ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach(event => resetBtn?.addEventListener(event, cancelResetHold));
 
+// Calendar system initialization
+let calendarItems = loadCollection(CALENDAR_ITEMS_KEY);
+let calendarScheduleOverrides = loadRecords(CALENDAR_SCHEDULE_OVERRIDES_KEY);
+let calendarItemCompletions = loadRecords(CALENDAR_COMPLETIONS_KEY);
+let calendarDayNotes = loadRecords(CALENDAR_DAY_NOTES_KEY);
+let calendarCurrentView = "week";
+let calendarCurrentDate = new Date();
+let calendarFilter = "all";
+
+function getAllCalendarItems(date = new Date()) {
+  const items = [];
+  const today = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  
+  // Collect glow rituals and habits
+  activeHabits().forEach(habit => {
+    const [start, end] = periodRange(habit, today);
+    if (today >= start && today <= end) {
+      items.push({
+        id: `glow-ritual-${habit.id}`,
+        sourceId: habit.id,
+        sourceType: "glow-ritual",
+        title: habit.title,
+        category: habit.category,
+        date: dateKey(today),
+        time: null,
+        type: "ritual",
+        mode: "glow",
+        icon: categoryMeta[habit.category]?.icon || "♡",
+        isCompleted: isComplete(habit, today),
+        frequency: habit.frequency,
+        description: habit.description
+      });
+    }
+  });
+
+  // Collect work tasks
+  (workTasks || []).forEach(task => {
+    const [start, end] = periodRange(task, today);
+    if (today >= start && today <= end) {
+      items.push({
+        id: `work-task-${task.id}`,
+        sourceId: task.id,
+        sourceType: "work-task",
+        title: task.title,
+        category: task.category,
+        date: dateKey(today),
+        time: null,
+        type: "task",
+        mode: "work",
+        icon: workCategoryMeta[task.category]?.icon || "§",
+        isCompleted: workState.days[dateKey(today)]?.checked?.[task.id] || false,
+        frequency: task.frequency,
+        description: task.why
+      });
+    }
+  });
+
+  // Collect glow events
+  (events || []).forEach(event => {
+    if (event.status !== "archived" && event.date === dateKey(today)) {
+      items.push({
+        id: `glow-event-${event.id}`,
+        sourceId: event.id,
+        sourceType: "glow-event",
+        title: event.name,
+        category: event.category,
+        date: dateKey(today),
+        time: null,
+        type: "event",
+        mode: "glow",
+        icon: "✦",
+        countdown: daysUntil(event.date),
+        isCompleted: false,
+        readiness: eventReadiness(event)
+      });
+    }
+  });
+
+  // Collect work events
+  (workEvents || []).forEach(event => {
+    if (event.status !== "archived" && event.date === dateKey(today)) {
+      items.push({
+        id: `work-event-${event.id}`,
+        sourceId: event.id,
+        sourceType: "work-event",
+        title: event.name,
+        category: event.category,
+        date: dateKey(today),
+        time: null,
+        type: "deadline",
+        mode: "work",
+        icon: "◆",
+        countdown: daysUntil(event.date),
+        isCompleted: false
+      });
+    }
+  });
+
+  // Collect calendar-only items
+  (calendarItems || []).forEach(item => {
+    if (item.date === dateKey(today)) {
+      items.push({
+        id: `calendar-${item.id}`,
+        sourceId: item.id,
+        sourceType: "calendar-item",
+        title: item.title,
+        category: item.mode,
+        date: item.date,
+        time: item.time || null,
+        type: item.type,
+        mode: item.mode,
+        icon: "☾",
+        importance: item.importance,
+        isCompleted: calendarItemCompletions[dateKey(today)]?.[item.id] || false,
+        notes: item.notes
+      });
+    }
+  });
+
+  return items;
+}
+
+function calendarDayItemsForDate(date = new Date()) {
+  const key = dateKey(date);
+  return getAllCalendarItems(date).sort((a, b) => {
+    if (a.time && b.time) return a.time.localeCompare(b.time);
+    if (a.time) return -1;
+    if (b.time) return 1;
+    return 0;
+  });
+}
+
+function renderCalendarView() {
+  const container = document.getElementById("calendarViewContainer");
+  if (!container) return;
+  
+  if (calendarCurrentView === "week") {
+    renderCalendarWeek(container);
+  } else if (calendarCurrentView === "day") {
+    renderCalendarDay(container);
+  } else if (calendarCurrentView === "month") {
+    renderCalendarMonth(container);
+  }
+  updateCalendarPeriodLabel();
+}
+
+function renderCalendarDay(container) {
+  const date = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth(), calendarCurrentDate.getDate());
+  const key = dateKey(date);
+  const items = calendarDayItemsForDate(date).filter(filterCalendarItem);
+  
+  const timeSlots = {
+    "morning": [],
+    "midday": [],
+    "afternoon": [],
+    "evening": [],
+    "night": [],
+    "anytime": []
+  };
+
+  items.forEach(item => {
+    if (!item.time) {
+      timeSlots.anytime.push(item);
+    } else {
+      const hour = parseInt(item.time.split(":")[0]);
+      if (hour < 12) timeSlots.morning.push(item);
+      else if (hour < 14) timeSlots.midday.push(item);
+      else if (hour < 17) timeSlots.afternoon.push(item);
+      else if (hour < 20) timeSlots.evening.push(item);
+      else timeSlots.night.push(item);
+    }
+  });
+
+  const html = `
+    <div class="calendar-day-view">
+      <div class="calendar-date-header">${new Date(date).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
+      ${Object.entries(timeSlots).map(([slot, slotItems]) => {
+        if (slotItems.length === 0) return "";
+        return `
+          <div class="calendar-time-slot">
+            <h4 class="slot-title">${slot.charAt(0).toUpperCase() + slot.slice(1)}</h4>
+            <div class="slot-items">
+              ${slotItems.map(item => `
+                <div class="calendar-item ${item.mode} ${item.isCompleted ? "completed" : ""}" data-item-id="${item.id}">
+                  <span class="item-icon">${item.icon}</span>
+                  <div class="item-content">
+                    <strong>${item.title}</strong>
+                    ${item.time ? `<small>${item.time}</small>` : ""}
+                  </div>
+                  <button class="item-checkbox" data-toggle-calendar-item="${item.id}"></button>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+  
+  container.innerHTML = html;
+  attachCalendarEventListeners();
+}
+
+function renderCalendarWeek(container) {
+  const start = startOfWeek(calendarCurrentDate);
+  const weekDays = Array.from({length: 7}, (_, i) => addDays(start, i));
+  
+  const html = `
+    <div class="calendar-week-view">
+      <div class="week-grid">
+        ${weekDays.map(day => {
+          const items = calendarDayItemsForDate(day).filter(filterCalendarItem);
+          return `
+            <div class="calendar-day-column">
+              <div class="day-header">
+                <div class="day-label">${day.toLocaleDateString("en-US", { weekday: "short" })}</div>
+                <div class="day-date">${day.getDate()}</div>
+              </div>
+              <div class="day-items">
+                ${items.map(item => `
+                  <div class="calendar-item ${item.mode} ${item.isCompleted ? "completed" : ""}" data-item-id="${item.id}">
+                    <span class="item-icon">${item.icon}</span>
+                    <span class="item-title">${item.title}</span>
+                    ${item.time ? `<span class="item-time">${item.time}</span>` : ""}
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+  
+  container.innerHTML = html;
+  attachCalendarEventListeners();
+}
+
+function renderCalendarMonth(container) {
+  const year = calendarCurrentDate.getFullYear();
+  const month = calendarCurrentDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const daysInMonth = lastDay.getDate();
+  const startDate = startOfWeek(firstDay);
+  
+  const weeks = [];
+  let currentDate = new Date(startDate);
+  
+  while (currentDate <= lastDay || weeks[weeks.length - 1].some(d => d.getMonth() === month)) {
+    const week = Array.from({length: 7}, (_, i) => {
+      const d = new Date(currentDate);
+      currentDate.setDate(currentDate.getDate() + 1);
+      return d;
+    });
+    weeks.push(week);
+  }
+
+  const html = `
+    <div class="calendar-month-view">
+      <div class="month-grid">
+        ${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => `<div class="day-header-name">${day}</div>`).join("")}
+        ${weeks.map(week => week.map(day => {
+          const isCurrentMonth = day.getMonth() === month;
+          const items = isCurrentMonth ? calendarDayItemsForDate(day).filter(filterCalendarItem) : [];
+          return `
+            <div class="calendar-month-day ${!isCurrentMonth ? "other-month" : ""}" data-date="${dateKey(day)}">
+              <div class="day-number">${day.getDate()}</div>
+              <div class="day-items-preview">
+                ${items.slice(0, 3).map(item => `<div class="item-dot" style="background: var(--calendar-${item.mode}, var(--rose)))" title="${item.title}"></div>`).join("")}
+                ${items.length > 3 ? `<div class="item-more">+${items.length - 3}</div>` : ""}
+              </div>
+            </div>
+          `;
+        }).join("")).join("")}
+      </div>
+    </div>
+  `;
+  
+  container.innerHTML = html;
+  attachCalendarEventListeners();
+}
+
+function filterCalendarItem(item) {
+  if (calendarFilter === "all") return true;
+  if (calendarFilter === "glow") return item.mode === "glow";
+  if (calendarFilter === "work") return item.mode === "work";
+  if (calendarFilter === "events") return item.type === "event" || item.type === "deadline";
+  if (calendarFilter === "deadlines") return item.type === "deadline";
+  if (calendarFilter === "rituals") return item.type === "ritual";
+  if (calendarFilter === "habits") return item.sourceType === "glow-ritual" || item.sourceType === "work-task";
+  if (calendarFilter === "completed") return item.isCompleted;
+  if (calendarFilter === "incomplete") return !item.isCompleted;
+  return true;
+}
+
+function updateCalendarPeriodLabel() {
+  const label = document.getElementById("calendarPeriodLabel");
+  if (!label) return;
+  
+  if (calendarCurrentView === "week") {
+    const start = startOfWeek(calendarCurrentDate);
+    const end = addDays(start, 6);
+    label.textContent = `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  } else if (calendarCurrentView === "day") {
+    label.textContent = calendarCurrentDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  } else if (calendarCurrentView === "month") {
+    label.textContent = calendarCurrentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  }
+}
+
+function attachCalendarEventListeners() {
+  document.querySelectorAll(".calendar-item").forEach(item => {
+    item.addEventListener("click", (e) => {
+      if (e.target.classList.contains("item-checkbox")) return;
+      showCalendarItemDetail(item.dataset.itemId);
+    });
+  });
+
+  document.querySelectorAll(".item-checkbox").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleCalendarItemCompletion(btn.dataset.toggleCalendarItem);
+    });
+  });
+
+  document.querySelectorAll(".calendar-month-day").forEach(day => {
+    day.addEventListener("click", () => {
+      const date = parseDate(day.dataset.date);
+      calendarCurrentDate = date;
+      calendarCurrentView = "day";
+      renderCalendarView();
+      updateViewButtons();
+    });
+  });
+}
+
+function toggleCalendarItemCompletion(itemId) {
+  const key = dateKey(calendarCurrentDate);
+  if (!calendarItemCompletions[key]) calendarItemCompletions[key] = {};
+  calendarItemCompletions[key][itemId] = !calendarItemCompletions[key][itemId];
+  saveCollection(CALENDAR_COMPLETIONS_KEY, calendarItemCompletions);
+  renderCalendarView();
+  renderCalendarSummary();
+}
+
+function showCalendarItemDetail(itemId) {
+  const modal = document.getElementById("calendarItemDetailModal");
+  if (!modal) return;
+  
+  // Find the item in all calendar items
+  const allItems = getAllCalendarItems();
+  const item = allItems.find(i => i.id === itemId);
+  
+  if (!item) return;
+  
+  const body = document.getElementById("calendarItemDetailBody");
+  const actions = document.getElementById("calendarItemDetailActions");
+  
+  let html = `<h3 id="calendarItemDetailTitle">${item.title}</h3>`;
+  html += `<p class="section-label">${item.type} • ${item.mode}</p>`;
+  
+  if (item.description) html += `<p>${item.description}</p>`;
+  if (item.countdown !== undefined) html += `<p class="countdown">${item.countdown} days away</p>`;
+  if (item.notes) html += `<p class="item-notes">${item.notes}</p>`;
+  
+  body.innerHTML = html;
+  
+  let actionsHtml = `
+    <button class="secondary-btn" data-toggle-calendar-item-detail="${itemId}">
+      ${item.isCompleted ? "Mark incomplete" : "Mark complete"}
+    </button>
+  `;
+  
+  if (item.sourceType === "glow-ritual" || item.sourceType === "work-task") {
+    actionsHtml += `<button class="text-button" onclick="document.location.hash = '#' + this.dataset.source">Open in ${item.mode === 'glow' ? 'Glow' : 'Work'} Mode</button>`;
+  }
+  
+  actionsHtml += `<button class="danger-btn" data-delete-calendar-item="${itemId}">Delete</button>`;
+  
+  actions.innerHTML = actionsHtml;
+  modal.hidden = false;
+}
+
+function renderCalendarSummary() {
+  const today = new Date();
+  const todayItems = calendarDayItemsForDate(today).filter(filterCalendarItem);
+  const thisWeekStart = startOfWeek(today);
+  const thisWeekItems = [];
+  
+  for (let i = 0; i < 7; i++) {
+    const day = addDays(thisWeekStart, i);
+    thisWeekItems.push(...calendarDayItemsForDate(day).filter(filterCalendarItem));
+  }
+  
+  const completedToday = todayItems.filter(item => item.isCompleted).length;
+  
+  document.getElementById("todaySummaryCount").textContent = `${todayItems.length} items`;
+  document.getElementById("todaySummaryText").textContent = todayItems.length > 0 ? `${completedToday} completed` : "Nothing scheduled.";
+  
+  const weekDeadlines = thisWeekItems.filter(item => item.type === "deadline" || item.type === "event").length;
+  document.getElementById("weekSummaryCount").textContent = `${weekDeadlines} deadlines`;
+  document.getElementById("weekSummaryText").textContent = weekDeadlines > 0 ? "Plan ahead." : "Clear week.";
+  
+  const completedCount = todayItems.filter(item => item.isCompleted).length;
+  document.getElementById("completedTodayCount").textContent = `${completedCount} / ${todayItems.length}`;
+  document.getElementById("completedTodayText").textContent = completedCount === todayItems.length ? "Great work!" : "Keep going.";
+}
+
+function initializeCalendarMode() {
+  // Calendar navigation
+  document.querySelectorAll('a[href="#calendar"]').forEach(link => {
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      showCalendarMode();
+    });
+  });
+
+  // Return to glow mode from calendar
+  document.querySelector(".glow-nav")?.querySelectorAll("a").forEach(link => {
+    const originalListener = link.onclick;
+    link.addEventListener("click", (e) => {
+      if (document.getElementById("calendarMode").hidden === false) {
+        // Currently in calendar, switch back to glow mode
+        document.getElementById("calendarMode").hidden = true;
+        document.getElementById("glowMode").hidden = false;
+        currentMode = "glow";
+      }
+    });
+  });
+
+  // Work mode navigation handled by existing mode switcher
+  // View switcher
+  document.querySelectorAll(".calendar-view-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      calendarCurrentView = btn.dataset.calendarView;
+      document.querySelectorAll(".calendar-view-btn").forEach(b => b.classList.toggle("active", b === btn));
+      renderCalendarView();
+    });
+  });
+
+  // Navigation
+  document.getElementById("calendarPrev")?.addEventListener("click", () => {
+    if (calendarCurrentView === "week") {
+      calendarCurrentDate = addDays(calendarCurrentDate, -7);
+    } else if (calendarCurrentView === "day") {
+      calendarCurrentDate = addDays(calendarCurrentDate, -1);
+    } else if (calendarCurrentView === "month") {
+      calendarCurrentDate = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth() - 1, 1);
+    }
+    renderCalendarView();
+  });
+
+  document.getElementById("calendarNext")?.addEventListener("click", () => {
+    if (calendarCurrentView === "week") {
+      calendarCurrentDate = addDays(calendarCurrentDate, 7);
+    } else if (calendarCurrentView === "day") {
+      calendarCurrentDate = addDays(calendarCurrentDate, 1);
+    } else if (calendarCurrentView === "month") {
+      calendarCurrentDate = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth() + 1, 1);
+    }
+    renderCalendarView();
+  });
+
+  document.getElementById("calendarToday")?.addEventListener("click", () => {
+    calendarCurrentDate = new Date();
+    renderCalendarView();
+  });
+
+  // Filters
+  document.querySelectorAll(".filter-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      calendarFilter = btn.dataset.calendarFilter;
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.toggle("active", b === btn));
+      renderCalendarView();
+    });
+  });
+
+  // Add button
+  document.getElementById("calendarAddBtn")?.addEventListener("click", () => {
+    document.getElementById("calendarItemEditorModal").hidden = false;
+    document.getElementById("calendarItemEditorForm").reset();
+    document.getElementById("calendarItemEditorId").value = "";
+  });
+
+  // Modal close
+  document.getElementById("calendarItemEditorClose")?.addEventListener("click", () => {
+    document.getElementById("calendarItemEditorModal").hidden = true;
+  });
+
+  document.getElementById("calendarItemDetailClose")?.addEventListener("click", () => {
+    document.getElementById("calendarItemDetailModal").hidden = true;
+  });
+
+  // Form submission
+  document.getElementById("calendarItemEditorForm")?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const item = {
+      id: formData.get("itemId") || `calendar-${Date.now()}`,
+      title: formData.get("title"),
+      type: formData.get("type"),
+      mode: formData.get("mode"),
+      category: formData.get("mode"),
+      date: formData.get("date"),
+      time: formData.get("time"),
+      endTime: formData.get("endTime"),
+      recurrence: formData.get("recurrence"),
+      importance: formData.get("importance"),
+      notes: formData.get("notes")
+    };
+
+    const existing = calendarItems.findIndex(i => i.id === item.id);
+    if (existing >= 0) {
+      calendarItems[existing] = item;
+    } else {
+      calendarItems.push(item);
+    }
+
+    saveCollection(CALENDAR_ITEMS_KEY, calendarItems);
+    document.getElementById("calendarItemEditorModal").hidden = true;
+    renderCalendarView();
+    renderCalendarSummary();
+  });
+
+  renderCalendarView();
+  renderCalendarSummary();
+}
+
+function updateViewButtons() {
+  document.querySelectorAll(".calendar-view-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.calendarView === calendarCurrentView);
+  });
+}
+
+function showCalendarMode() {
+  document.getElementById("glowMode").hidden = true;
+  document.getElementById("workMode").hidden = true;
+  document.getElementById("calendarMode").hidden = false;
+  document.querySelector(".glow-nav").hidden = false;
+  document.querySelector(".work-nav").hidden = true;
+  forcePageTop();
+  renderCalendarView();
+  renderCalendarSummary();
+}
+
+function returnToMode() {
+  document.getElementById("calendarMode").hidden = true;
+  if (currentMode === "work") {
+    document.getElementById("workMode").hidden = false;
+    document.querySelector(".work-nav").hidden = false;
+  } else {
+    document.getElementById("glowMode").hidden = false;
+    document.querySelector(".glow-nav").hidden = false;
+  }
+  forcePageTop();
+}
+
 const currentSection = document.querySelector(".swiss-current");
 const observer = new IntersectionObserver(entries => entries.forEach(entry => {
   if (entry.target === currentSection) entry.target.classList.toggle("current-visible", entry.isIntersecting);
@@ -1690,6 +2260,7 @@ try {
   renderAll();
   renderMeasurements();
   initialiseAtelier();
+  initializeCalendarMode();
   renderWorkAll();
   applyTimeTheme();
   setInterval(applyTimeTheme, 5 * 60 * 1000);
