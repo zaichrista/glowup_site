@@ -206,8 +206,8 @@ input { width: 100%; border: 2px solid var(--ink); background: rgba(255,255,255,
 .danger-btn.holding { background: var(--hot); box-shadow: 0 0 0 8px rgba(255,47,146,.16); }
 .footer-wordmark { grid-column: 1 / -1; font-size: clamp(90px, 18vw, 310px); line-height: .75; letter-spacing: -.12em; margin-top: 54px; white-space: nowrap; }
 .footer-wordmark em { font-family: "Cormorant Garamond", serif; letter-spacing: -.06em; }
-.toast { position: fixed; right: 22px; bottom: 22px; z-index: 3000; max-width: min(420px, calc(100vw - 44px)); padding: 18px 20px; background: var(--ink); color: white; border: 1px solid rgba(255,255,255,.25); box-shadow: 8px 8px 0 var(--hot); font-family: "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .1em; font-size: 12px; transform: translateY(140%); transition: transform .35s var(--ease); }
-.toast.show { transform: translateY(0); }
+.toast { position: fixed; right: 22px; bottom: 22px; z-index: 3000; max-width: min(420px, calc(100vw - 44px)); padding: 18px 20px; background: var(--ink); color: white; border: 1px solid rgba(255,255,255,.25); box-shadow: 8px 8px 0 var(--hot); font-family: "IBM Plex Mono", monospace; text-transform: uppercase; letter-spacing: .1em; font-size: 12px; opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(calc(100% + 60px)); transition: transform .35s var(--ease), opacity .35s var(--ease), visibility 0s linear .35s; }
+.toast.show { opacity: 1; visibility: visible; transform: translateY(0); transition-delay: 0s; }
 
 .swiss-current .section-label, .swiss-current .score-card, .work-index.construct-ready .section-head, .work-index.construct-ready .habit-category, .research-grid .habit-card { opacity: 0; transform: translateY(36px); filter: blur(8px); transition: opacity .8s var(--ease), transform .8s var(--ease), filter .8s var(--ease); }
 .swiss-current.current-visible .section-label, .swiss-current.current-visible .score-card, .work-index.constructed .section-head, .work-index.constructed .habit-category, .research-grid.is-visible .habit-card { opacity: 1; transform: translateY(0); filter: blur(0); }
@@ -2504,4 +2504,245 @@ body.time-night.mode-calendar .calendar-time-slot { background: rgba(255,255,255
   .calendar-period-title { min-width: 0; flex: 1; }
   .month-grid { min-width: 760px; }
   .calendar-sidebar { max-height: none; display: block; overflow: visible; }
+}
+
+@media (max-width: 700px) {
+  .toast { display: none !important; }
+
+  .site-header {
+    width: calc(100% - 16px);
+    margin: 8px;
+    padding: 8px 10px;
+    gap: 6px;
+    border-radius: 18px;
+  }
+
+  .mode-switcher { gap: 4px; padding: 3px; }
+  .mode-switch { min-height: 32px; padding: 7px 8px; font-size: 8px; letter-spacing: .06em; }
+  .nav { gap: 4px; }
+  .nav a { min-height: 30px; padding: 7px 8px; font-size: 8px; }
+
+  .section { padding: 50px 12px; }
+  .hero, .work-hero, .calendar-hero {
+    min-height: auto;
+    padding-top: 92px;
+    padding-bottom: 34px;
+    gap: 18px;
+  }
+
+  h1 { font-size: clamp(38px, 12vw, 52px); line-height: .92; }
+  .hero h1 span:last-child, .work-hero h1 span:last-child, .calendar-hero h1 span:last-child {
+    white-space: nowrap;
+  }
+
+  .section-label, .tiny-label, .mono { font-size: 8px; letter-spacing: .08em; }
+  .hero .intro, .work-hero .intro, .reset-copy {
+    margin-top: 14px;
+    font-size: 18px;
+    line-height: 1.28;
+  }
+
+  .hero-actions, .work-hero-actions {
+    margin-top: 16px;
+    gap: 8px;
+  }
+
+  .text-link, .text-button, .primary-btn, .secondary-btn, .danger-btn {
+    min-height: 38px;
+    padding: 8px 12px;
+    font-size: 10px;
+    letter-spacing: .06em;
+  }
+
+  .hero-pie-card, .score-card, .work-focus-card, .calendar-hero-note {
+    padding: 15px;
+    border-radius: 16px;
+  }
+
+  .pie--hero { width: min(220px, 64vw); }
+  .hero-bottom-note, .work-orbit-note { display: none; }
+
+  .section-head { margin-bottom: 18px; gap: 8px; }
+  .section-head h2 { font-size: clamp(34px, 10vw, 48px); line-height: .95; }
+  .section-head p { font-size: 15px; line-height: 1.45; }
+
+  .command-summary, .calendar-summary, .work-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .summary-tile, .work-summary-card {
+    min-height: 76px;
+    padding: 11px;
+    border-radius: 13px;
+  }
+
+  .summary-tile span, .work-summary-card span { font-size: 8px; letter-spacing: .06em; }
+  .summary-tile strong, .work-summary-card strong { margin-top: 7px; font-size: 19px; line-height: 1; }
+  .summary-tile small, .work-summary-card small { font-size: 10px; line-height: 1.35; }
+
+  .habit-filters, .calendar-filter-rail {
+    top: 62px;
+    margin-bottom: 20px;
+    padding: 4px;
+    gap: 4px;
+    border-radius: 14px;
+  }
+
+  .habit-filter, .work-task-filter, .calendar-filter {
+    min-height: 30px;
+    padding: 7px 9px;
+    font-size: 8px;
+    letter-spacing: .06em;
+  }
+
+  .life-category, .habit-category { margin-top: 28px; }
+  .life-category-head, .habit-category-head { margin-bottom: 9px; }
+  .life-category-head h3, .habit-category-head h3 { font-size: 30px; line-height: .95; }
+  .life-category-head p, .habit-category-head p { font-size: 13px; line-height: 1.35; }
+
+  .command-card-grid, .habit-grid, .review-grid, .daily-archive-grid, .event-grid, .event-metrics, .event-story {
+    gap: 8px;
+  }
+
+  .command-habit, .habit-card, .review-card, .daily-archive-card, .event-card, .next-dday, .work-level-card {
+    min-height: 0;
+    padding: 13px;
+    border-radius: 14px;
+  }
+
+  .command-habit-top { gap: 6px; }
+  .frequency-badge, .category-pill, .event-tag, .mode-tag, .calendar-detail-meta span {
+    padding: 5px 7px;
+    font-size: 8px;
+    letter-spacing: .05em;
+  }
+
+  .due-status { margin-top: 8px; font-size: 11px; line-height: 1.35; }
+  .command-habit-title { margin-top: 10px; gap: 7px; }
+  .command-habit h4, .habit-card h3, .review-card h3, .event-card h3 { font-size: 23px; line-height: 1; }
+  .command-habit-copy, .habit-card p, .review-card p, .event-card p {
+    min-height: 0;
+    margin: 7px 0;
+    font-size: 12px;
+    line-height: 1.42;
+  }
+
+  .command-habit details, .habit-card details {
+    padding: 7px 0;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .command-habit summary, .habit-card summary { font-size: 8px; letter-spacing: .06em; }
+  .ritual-check {
+    min-height: 36px;
+    padding: 8px 9px;
+    font-size: 9px;
+    letter-spacing: .06em;
+  }
+
+  .custom-ritual-actions { margin: 5px 0; gap: 5px; }
+  .custom-ritual-actions button { padding: 6px 8px; font-size: 8px; }
+
+  .tracker-toolbar { gap: 6px; margin-bottom: 12px; }
+  .tracker-toolbar strong { min-width: 0; font-size: 18px; }
+  .tracker-tab, .work-tracker-tab, .tracker-arrow, .tracker-today {
+    min-height: 30px;
+    padding: 7px 9px;
+    font-size: 8px;
+  }
+
+  .habit-table .habit-name {
+    width: 138px;
+    min-width: 138px;
+    padding: 0 8px;
+    font-size: 10px;
+  }
+
+  .habit-table th, .habit-table td {
+    min-width: 32px;
+    height: 32px;
+    font-size: 9px;
+  }
+
+  .daily-archive-card p:last-child { margin-top: 10px; font-size: 18px; line-height: 1.15; }
+  .event-detail-hero { padding: 17px; border-radius: 16px; }
+  .event-detail-hero h2 { font-size: clamp(40px, 13vw, 54px); line-height: .88; }
+
+  .calendar-command { padding: 10px; }
+  .calendar-hero-note strong { margin: 10px 0; font-size: 26px; line-height: 1; }
+  .calendar-page-wrapper { min-height: 0; gap: 8px; }
+  .calendar-sidebar { display: none; }
+  .calendar-main-content { border-radius: 16px; }
+  .calendar-header { padding: 10px; gap: 8px; border-radius: 16px 16px 0 0; }
+  .calendar-header-left, .calendar-header-right { gap: 6px; }
+  .calendar-period-title { min-width: 0; font-size: 24px; line-height: 1; }
+  .calendar-nav-btn { width: 30px; height: 30px; }
+  .calendar-today-btn, .calendar-view-btn, .calendar-add-btn {
+    min-height: 30px;
+    padding: 7px 9px;
+    font-size: 8px;
+  }
+
+  .calendar-view-container { min-height: 450px; padding: 8px; }
+  .week-grid { gap: 7px; }
+  .calendar-day-column {
+    flex-basis: 214px;
+    min-height: 350px;
+    border-radius: 13px;
+  }
+
+  .day-header { padding: 10px; }
+  .day-label, .day-header-name { font-size: 8px; }
+  .day-date { font-size: 24px; }
+  .day-items { padding: 6px; }
+  .calendar-item {
+    margin-bottom: 4px !important;
+    padding: 6px 7px !important;
+    gap: 5px;
+    border-radius: 9px;
+  }
+
+  .item-content strong { font-size: 9px; line-height: 1.25; }
+  .item-content small { font-size: 6px; line-height: 1.25; }
+  .item-icon { font-size: 11px; }
+  .month-grid { min-width: 650px; border-spacing: 4px; }
+  .calendar-month-day { height: 104px; padding: 7px; border-radius: 10px; }
+  .day-number { font-size: 18px; }
+  .calendar-date-header { font-size: 38px; }
+  .calendar-time-slot { padding: 12px; border-radius: 14px; }
+
+  .checkin-card, .atelier-form, .calendar-item-detail-content, .level-modal-card {
+    padding: 20px 14px;
+    border-radius: 16px;
+  }
+
+  .checkin-intro h2, .atelier-form h2, .calendar-item-detail-content h2 {
+    font-size: clamp(34px, 11vw, 44px);
+    line-height: .92;
+  }
+
+  .checkin-intro p, .atelier-form p, .calendar-item-detail-content > p {
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .checkin-fields, .atelier-fields { gap: 8px; }
+  .checkin-fields input, .checkin-fields textarea, .atelier-fields input, .atelier-fields textarea, .atelier-fields select {
+    min-height: 40px;
+    padding: 10px;
+    border-radius: 11px;
+    font-size: 14px;
+  }
+
+  .habit-update-list { margin: 14px 0; gap: 6px; }
+  .habit-update-option { padding: 9px; border-radius: 11px; }
+  .habit-update-option strong { font-size: 13px; }
+  .habit-update-option small { font-size: 10px; }
+
+  .contact { min-height: auto; padding: 48px 12px; }
+  .contact h2 { font-size: clamp(38px, 12vw, 50px); }
+  .reset-panel { padding: 15px; gap: 10px; }
+  .footer-wordmark { margin-top: 22px; font-size: 64px; }
 }

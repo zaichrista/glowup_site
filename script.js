@@ -1112,7 +1112,6 @@ function initialiseCheckinForms() {
     renderMeasurements();
     renderDailyArchive();
     renderSummary();
-    showToast("Morning archive complete. The day may begin.");
   });
 
   const eveningForm = document.getElementById("eveningReflectionForm");
