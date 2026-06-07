@@ -259,6 +259,25 @@ async function initialiseCloudAuth() {
   }
   await resolveCloudArchive();
 }
+async function signOutOfPrivateArchive() {
+  if (!cloudClient) return;
+  updateCloudIndicator("Signing out…");
+  clearTimeout(cloudSyncTimer);
+  await uploadLocalArchive();
+  const { error } = await cloudClient.auth.signOut();
+  if (error) {
+    showToast(`Could not sign out: ${error.message}`);
+    return;
+  }
+  cloudUser = null;
+  cloudStartupComplete = false;
+  pendingCloudArchive = null;
+  activeMandatoryModal = null;
+  document.querySelectorAll(".checkin-modal, .atelier-modal, .level-modal").forEach(modal => { modal.hidden = true; });
+  document.getElementById("authPassword").value = "";
+  updateAuthStatus("Signed out. Enter your username and password to reopen the private archive.");
+  showAuthGate();
+}
 
 function applyTimeTheme() {
   const now = new Date();
@@ -1957,6 +1976,7 @@ document.getElementById("levelModal")?.addEventListener("click", event => { if (
 document.getElementById("deleteRitualCancel")?.addEventListener("click", closeRitualDeleteConfirm);
 document.getElementById("deleteRitualCancelX")?.addEventListener("click", closeRitualDeleteConfirm);
 document.getElementById("deleteRitualConfirm")?.addEventListener("click", confirmRitualDelete);
+document.getElementById("cloudSignOutBtn")?.addEventListener("click", signOutOfPrivateArchive);
 document.getElementById("deleteRitualConfirmModal")?.addEventListener("click", event => {
   if (event.target.id === "deleteRitualConfirmModal") closeRitualDeleteConfirm();
 });

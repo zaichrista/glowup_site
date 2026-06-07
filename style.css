@@ -3278,6 +3278,13 @@ body.auth-open .cursor-label { color: var(--oxblood); }
   margin-top: 24px;
 }
 .sync-choice-actions button { width: 100%; margin: 0; }
+.cloud-signout-btn {
+  margin-top: 8px;
+  border-color: rgba(243,223,191,.42);
+  background: rgba(255,253,249,.08);
+  color: var(--champagne);
+}
+.cloud-signout-btn:hover { background: rgba(255,253,249,.14); }
 
 @media (max-width: 700px) {
   .auth-gate {
@@ -3296,4 +3303,5 @@ body.auth-open .cursor-label { color: var(--oxblood); }
   .auth-card input { min-height: 44px; font-size: 16px; }
   .auth-card button { min-height: 44px; }
   .sync-choice-actions { grid-template-columns: 1fr; }
+  .cloud-signout-btn { width: 100%; min-height: 42px; }
 }
