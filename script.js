@@ -22,6 +22,10 @@ const HABIT_UPDATE_KEY = "glowHabitUpdates";
 const EVENING_KEY = "glowEveningReflections";
 const EVENTS_KEY = "glowEvents";
 const CUSTOM_RITUALS_KEY = "glowCustomRituals";
+const WORK_STATE_KEY = "glowWorkState.v1";
+const WORK_TASKS_KEY = "workTasks";
+const WORK_EVENTS_KEY = "workEvents";
+const MODE_MIGRATION_KEY = "glowTwoModeMigration.v1";
 const TODAY_KEY = dateKey(new Date());
 const TIME_CLASSES = ["time-dawn", "time-morning", "time-midday", "time-afternoon", "time-sunset", "time-evening", "time-night"];
 
@@ -69,6 +73,9 @@ const categoryMeta = {
   soul: { label: "Soul / God / Mind", icon: "✦", group: "Soul" },
   custom: { label: "Custom", icon: "✧", group: "Life" }
 };
+const WORK_CATEGORY_KEYS = new Set(["career", "creativity", "money"]);
+function isWorkHabit(habit) { return habit?.mode === "work" || WORK_CATEGORY_KEYS.has(habit?.category); }
+function pinkHabits() { return habits.filter(habit => !isWorkHabit(habit)); }
 
 let habits = [
   ritual("nutrition-0", "Protein first", "food", "daily", "Hit 100–120g protein to keep curves while revealing the waist.", "Protects muscle and supports the waist goal without crash dieting."),
@@ -180,6 +187,79 @@ let habitFilter = "today";
 let chartMode = "today";
 let eventView = "active";
 let selectedEventId = null;
+const workCategoryMeta = {
+  study: { label: "Study / Dissertation", icon: "§" },
+  jobs: { label: "Jobs / Applications", icon: "↗" },
+  portfolio: { label: "Portfolio", icon: "□" },
+  creativeWork: { label: "Creative Tasks", icon: "✎" },
+  client: { label: "Client Work", icon: "◇" },
+  brand: { label: "Brand Projects", icon: "✦" },
+  adminWork: { label: "Money / Admin", icon: "₊" },
+  skills: { label: "Skill Building", icon: "↑" },
+  networking: { label: "Networking", icon: "○" }
+};
+const workLevels = ["The Apprentice", "The Focused Girl", "The Oxford Engine", "The Portfolio Builder", "The Strategist", "The Interview Threat", "The Creative Operator", "The Blue-Chip Girl", "The Empire Builder", "The Archival CEO"];
+const workLevelThresholds = [0, 7, 21, 46, 81, 131, 201, 301, 451, 651];
+const workMotivation = ["Your future invoices are watching.", "One application closer.", "The portfolio will not build itself, darling.", "Oxford discipline. Vogue execution.", "Tiny task. Large consequence.", "Build proof, not panic.", "The blue archive remembers."];
+const builtInWorkTasks = [
+  workTask("life-0", "Dissertation or career block", "study", "daily", "Moves the largest academic obligation forward through manageable progress.", "60 minutes"),
+  workTask("life-1", "Portfolio and career review", "portfolio", "weekly", "Turns your ability into proof that other people can hire.", "45 minutes"),
+  workTask("life-2", "Creative skill block", "creativeWork", "daily", "Keeps creative capability visible and growing.", "30 minutes"),
+  workTask("admin-reset", "Budget and admin reset", "adminWork", "weekly", "Protects the creative life from chaos.", "30 minutes"),
+  workTask("portfolio-month", "Website and portfolio audit", "portfolio", "monthly", "Keeps your public proof polished and current.", "90 minutes"),
+  workTask("finance-audit", "Financial audit", "adminWork", "monthly", "Creates money clarity and calmer decisions.", "45 minutes"),
+  workTask("fieldwork-tracker", "Create dissertation fieldwork tracker", "study", "one-time", "Gives complex academic work one reliable command centre.", "60 minutes"),
+  workTask("work-job-search", "Search and shortlist jobs", "jobs", "weekly", "Converts ambition into visible opportunities.", "45 minutes"),
+  workTask("work-application", "Submit a strong application", "jobs", "weekly", "Puts your evidence in front of the right people.", "90 minutes"),
+  workTask("work-cv", "Improve CV or LinkedIn", "jobs", "weekly", "Keeps your professional story ready when opportunity appears.", "30 minutes"),
+  workTask("work-reading", "Academic reading and notes", "study", "weekly", "Builds the evidence base behind stronger academic work.", "60 minutes"),
+  workTask("work-case-study", "Build a portfolio case study", "portfolio", "weekly", "Turns finished work into persuasive proof.", "90 minutes"),
+  workTask("work-seo", "Portfolio SEO and project copy", "portfolio", "monthly", "Helps the right people discover and understand your work.", "60 minutes"),
+  workTask("work-design-sprint", "Creative design sprint", "creativeWork", "weekly", "Keeps ideas moving from taste into visible output.", "60 minutes"),
+  workTask("work-client-followup", "Client work and follow-up", "client", "weekly", "Builds trust through clear delivery and communication.", "45 minutes"),
+  workTask("work-brand-concept", "Develop a brand concept", "brand", "weekly", "Builds evidence of strategic and commercial taste.", "60 minutes"),
+  workTask("work-email", "Email and calendar clean-up", "adminWork", "weekly", "Protects focused work from avoidable chaos.", "30 minutes"),
+  workTask("work-skill", "High-income skill practice", "skills", "weekly", "Builds capability that compounds over time.", "60 minutes"),
+  workTask("work-network", "Networking touchpoint", "networking", "weekly", "Makes relationships part of opportunity-building.", "20 minutes")
+];
+let customWorkTasks = loadCollection(WORK_TASKS_KEY);
+customWorkTasks = customWorkTasks.map(task => ({ ...task, category: mapLegacyWorkCategory(task.category) }));
+let workTasks = [...builtInWorkTasks, ...customWorkTasks.filter(task => !task.deleted)];
+let workEvents = loadCollection(WORK_EVENTS_KEY);
+let workState = loadWorkState();
+let workFilter = "today";
+let workTrackerView = "week";
+let workTrackerDate = new Date();
+let currentMode = "glow";
+
+function workTask(id, title, category, frequency, why, duration = "") {
+  return { id, title, category, frequency, why, duration, importance: "High", mode: "work", description: why };
+}
+function defaultWorkState() { return { days: {}, totalTicks: 0, streak: 0, bestStreak: 0, lastActiveDate: TODAY_KEY }; }
+function loadWorkState() {
+  try {
+    const loaded = { ...defaultWorkState(), ...JSON.parse(localStorage.getItem(WORK_STATE_KEY) || "{}") };
+    loaded.days = loaded.days && typeof loaded.days === "object" ? loaded.days : {};
+    loaded.totalTicks = Number.isFinite(Number(loaded.totalTicks)) ? Number(loaded.totalTicks) : 0;
+    return loaded;
+  }
+  catch { return defaultWorkState(); }
+}
+function saveWorkState() { localStorage.setItem(WORK_STATE_KEY, JSON.stringify(workState)); }
+function recomputeWorkStreak() {
+  const completedDates = new Set(Object.entries(workState.days).filter(([, day]) => Object.values(day.checked || {}).some(Boolean)).map(([key]) => key));
+  let cursor = parseDate(TODAY_KEY);
+  if (!completedDates.has(TODAY_KEY)) cursor = addDays(cursor, -1);
+  let streak = 0;
+  while (completedDates.has(dateKey(cursor))) { streak += 1; cursor = addDays(cursor, -1); }
+  workState.streak = streak;
+  workState.bestStreak = Math.max(workState.bestStreak || 0, streak);
+}
+function ensureWorkDay(key) {
+  if (!workState.days[key]) workState.days[key] = { checked: {} };
+  workState.days[key].checked ||= {};
+  return workState.days[key];
+}
 
 function dateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -268,7 +348,7 @@ function loadCollection(key) {
 function saveCollection(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
 function activeHabits() {
   const today = parseDate(TODAY_KEY);
-  return habits.filter(habit => !habit.paused && (!habit.startDate || parseDate(habit.startDate) <= today) && (!habit.endDate || parseDate(habit.endDate) >= today));
+  return pinkHabits().filter(habit => !habit.paused && (!habit.startDate || parseDate(habit.startDate) <= today) && (!habit.endDate || parseDate(habit.endDate) >= today));
 }
 function eventById(id) { return events.find(event => event.id === id); }
 function linkedEventsForRitual(id) { return events.filter(event => event.status !== "archived" && event.ritualLinks?.some(link => link.ritualId === id)); }
@@ -368,7 +448,7 @@ function toggleHabit(id, key = TODAY_KEY) {
   renderAll();
 }
 
-function todayScope() { return habits; }
+function todayScope() { return activeHabits(); }
 function todayCompletedCount() { return todayScope().filter(habit => isComplete(habit)).length; }
 function todayPercentage() { return Math.round(todayCompletedCount() / todayScope().length * 100); }
 function periodStats(start, end) {
@@ -378,12 +458,12 @@ function periodStats(start, end) {
     const parsed = parseDate(key);
     if (parsed >= start && parsed <= end) {
       Object.entries(day.checked || {}).forEach(([id, done]) => {
-        const habit = habits.find(item => item.id === id);
+        const habit = pinkHabits().find(item => item.id === id);
         if (done && habit) entries.push(habit);
       });
     }
   });
-  const possible = habits.filter(habit => habit.frequency !== "one-time").reduce((sum, habit) => {
+  const possible = pinkHabits().filter(habit => habit.frequency !== "one-time").reduce((sum, habit) => {
     if (habit.frequency === "daily") return sum + days;
     if (habit.frequency === "weekly") return sum + Math.ceil(days / 7);
     if (habit.frequency === "biweekly") return sum + Math.ceil(days / 14);
@@ -404,7 +484,7 @@ function monthStats() {
 function renderHabitBoard() {
   const board = document.getElementById("habitBoard");
   if (!board) return;
-  const visible = (habitFilter === "all" ? habits : activeHabits()).filter(habit => {
+  const visible = (habitFilter === "all" ? pinkHabits() : activeHabits()).filter(habit => {
     const done = isComplete(habit);
     const status = dueStatus(habit);
     if (habitFilter === "today") return habit.frequency === "daily" || !done;
@@ -450,7 +530,7 @@ function renderHabitCard(habit) {
 function renderSummary() {
   const summary = document.getElementById("commandSummary");
   if (!summary) return;
-  const incomplete = habits.filter(habit => !isComplete(habit));
+  const incomplete = activeHabits().filter(habit => !isComplete(habit));
   const next = incomplete[0]?.title || "The archive is complete";
   const week = weekStats();
   const month = monthStats();
@@ -564,7 +644,7 @@ function renderTracker() {
   }
   const dates = trackerDates();
   period.textContent = trackerView === "month" ? trackerDate.toLocaleDateString("en-GB", { month: "long", year: "numeric" }) : `${dates[0].toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – ${dates[6].toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
-  const groups = Object.keys(categoryMeta).map(category => ({ category, habits: habits.filter(habit => habit.category === category) })).filter(group => group.habits.length);
+  const groups = Object.keys(categoryMeta).map(category => ({ category, habits: pinkHabits().filter(habit => habit.category === category) })).filter(group => group.habits.length);
   tables.innerHTML = groups.map(group => {
     const meta = categoryMeta[group.category];
     const headers = dates.map(date => `<th>${trackerView === "month" ? date.getDate() : `${date.toLocaleDateString("en-GB", { weekday: "short" })}<br>${date.getDate()}`}</th>`).join("");
@@ -790,7 +870,7 @@ function deleteCustomRitual(id) {
 }
 function initialiseAtelier() {
   const categorySelect = document.getElementById("customRitualCategory");
-  categorySelect.innerHTML = Object.entries(categoryMeta).map(([key, meta]) => `<option value="${key}">${meta.label}</option>`).join("");
+  categorySelect.innerHTML = Object.entries(categoryMeta).filter(([key]) => !WORK_CATEGORY_KEYS.has(key)).map(([key, meta]) => `<option value="${key}">${meta.label}</option>`).join("");
   const linkedEventSelect = document.getElementById("ritualEditorForm").elements.linkedEvent;
   linkedEventSelect.innerHTML = `<option value="">None</option>${events.filter(event => event.status !== "archived").map(event => `<option value="${event.id}">${escapeHTML(event.name)}</option>`).join("")}`;
   document.getElementById("openEventCreator").addEventListener("click", () => openEventEditor());
@@ -899,10 +979,10 @@ function renderReview() {
   const week = weekStats();
   const categoryCounts = {};
   week.entries.forEach(habit => categoryCounts[habit.category] = (categoryCounts[habit.category] || 0) + 1);
-  const ranked = Object.keys(categoryMeta).sort((a, b) => (categoryCounts[b] || 0) - (categoryCounts[a] || 0));
+  const ranked = Object.keys(categoryMeta).filter(key => !WORK_CATEGORY_KEYS.has(key)).sort((a, b) => (categoryCounts[b] || 0) - (categoryCounts[a] || 0));
   const best = categoryMeta[ranked[0]].label;
   const neglected = categoryMeta[ranked[ranked.length - 1]].label;
-  const focus = habits.find(habit => habit.category === ranked[ranked.length - 1] && !isComplete(habit))?.title || "Protect the streak";
+  const focus = pinkHabits().find(habit => habit.category === ranked[ranked.length - 1] && !isComplete(habit))?.title || "Protect the streak";
   const cards = [
     ["This week", `${week.percentage}%`, "The archive is taking shape."],
     ["Best category", best, "Blair would call this maintenance."],
@@ -938,13 +1018,16 @@ function focusableElements(modal) {
   return [...modal.querySelectorAll('input, textarea, button, select, [tabindex]:not([tabindex="-1"])')].filter(element => !element.disabled);
 }
 function openMandatoryModal(modal) {
+  if (!modal) return;
   activeMandatoryModal = modal;
   modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
   document.body.classList.add("modal-locked");
   requestAnimationFrame(() => focusableElements(modal)[0]?.focus());
 }
 function closeMandatoryModal(modal) {
   modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
   activeMandatoryModal = null;
   document.body.classList.remove("modal-locked");
   releaseLoader();
@@ -952,7 +1035,7 @@ function closeMandatoryModal(modal) {
 function openOptionalHabitUpdate() {
   const modal = document.getElementById("habitUpdateModal");
   const list = document.getElementById("habitUpdateList");
-  const due = habits.filter(habit => !isComplete(habit));
+  const due = activeHabits().filter(habit => !isComplete(habit));
   list.innerHTML = due.map(habit => {
     const meta = categoryMeta[habit.category];
     return `<label class="habit-update-option"><input type="checkbox" name="habitUpdate" value="${habit.id}" /><span>${meta.icon}</span><span><strong>${habit.title}</strong><small>${frequencyLabel(habit.frequency)} · ${dueStatus(habit).label}</small></span></label>`;
@@ -1107,11 +1190,22 @@ function startResetHold() {
     localStorage.removeItem(EVENING_KEY);
     localStorage.removeItem(EVENTS_KEY);
     localStorage.removeItem(CUSTOM_RITUALS_KEY);
+    localStorage.removeItem(WORK_STATE_KEY);
+    localStorage.removeItem(WORK_TASKS_KEY);
+    localStorage.removeItem(WORK_EVENTS_KEY);
+    localStorage.removeItem(MODE_MIGRATION_KEY);
     events = [];
     customRituals = [];
     syncCustomRituals();
     initialiseEventSelect();
     state = defaultState();
+    workState = defaultWorkState();
+    customWorkTasks = [];
+    workTasks = [...builtInWorkTasks];
+    workEvents = [];
+    saveWorkState();
+    saveCollection(WORK_TASKS_KEY, customWorkTasks);
+    saveCollection(WORK_EVENTS_KEY, workEvents);
     ensureDay(TODAY_KEY);
     saveState();
     renderAll();
@@ -1139,6 +1233,361 @@ function showLevelModal(info) {
   document.getElementById("levelModalCopy").textContent = levelMessages[(info.number - 2) % levelMessages.length];
   modal.hidden = false;
 }
+
+function migrateToTwoModes() {
+  if (localStorage.getItem(MODE_MIGRATION_KEY)) return;
+  const workIds = new Set([...builtInWorkTasks.map(task => task.id), ...customRituals.filter(isWorkHabit).map(task => task.id)]);
+  Object.entries(state.days).forEach(([key, day]) => {
+    Object.entries(day.checked || {}).forEach(([id, done]) => {
+      if (workIds.has(id) && done) {
+        ensureWorkDay(key).checked[id] = true;
+        day.checked[id] = false;
+      }
+    });
+  });
+  const movedCustom = customRituals.filter(isWorkHabit).map(item => ({ ...item, mode: "work", category: mapLegacyWorkCategory(item.category), description: item.notes || item.why }));
+  if (movedCustom.length) {
+    customWorkTasks.push(...movedCustom.filter(item => !customWorkTasks.some(existing => existing.id === item.id)));
+    customRituals = customRituals.filter(item => !isWorkHabit(item));
+    syncCustomRituals();
+  }
+  const movedEvents = events.filter(event => event.category === "Career moment");
+  if (movedEvents.length) {
+    workEvents.push(...movedEvents.filter(item => !workEvents.some(existing => existing.id === item.id)));
+    events = events.filter(event => event.category !== "Career moment");
+    saveCollection(EVENTS_KEY, events);
+    saveCollection(WORK_EVENTS_KEY, workEvents);
+  }
+  workState.totalTicks = Object.values(workState.days).reduce((sum, day) => sum + Object.values(day.checked || {}).filter(Boolean).length, 0);
+  recomputeWorkStreak();
+  state.totalTicks = historyCount(state);
+  workTasks = [...builtInWorkTasks, ...customWorkTasks.filter(task => !task.deleted)];
+  saveCollection(WORK_TASKS_KEY, customWorkTasks);
+  saveWorkState();
+  saveState();
+  localStorage.setItem(MODE_MIGRATION_KEY, "complete");
+}
+function mapLegacyWorkCategory(category) {
+  if (category === "career") return "study";
+  if (category === "money") return "adminWork";
+  if (category === "creativity") return "creativeWork";
+  return workCategoryMeta[category] ? category : "creativeWork";
+}
+function workCompletionKeys(task, date = new Date()) {
+  const [start, end] = periodRange(task, date);
+  return Object.keys(workState.days).filter(key => workState.days[key]?.checked?.[task.id] && parseDate(key) >= start && parseDate(key) <= end);
+}
+function isWorkComplete(task, date = new Date()) { return workCompletionKeys(task, date).length > 0; }
+function activeWorkTasks() { return workTasks.filter(task => !task.paused); }
+function workLevelInfo() {
+  let number = 1;
+  workLevelThresholds.forEach((min, index) => { if (workState.totalTicks >= min) number = index + 1; });
+  return { number, name: workLevels[number - 1], min: workLevelThresholds[number - 1], next: workLevelThresholds[number] ?? Infinity };
+}
+function toggleWorkTask(id) {
+  const task = workTasks.find(item => item.id === id);
+  if (!task) return;
+  const existing = workCompletionKeys(task);
+  if (existing.length) {
+    ensureWorkDay(existing[existing.length - 1]).checked[id] = false;
+    workState.totalTicks = Math.max(0, workState.totalTicks - 1);
+    showToast("Missed, not ruined. Build proof, not panic.");
+  } else {
+    ensureWorkDay(TODAY_KEY).checked[id] = true;
+    workState.totalTicks += 1;
+    showToast(workMotivation[workState.totalTicks % workMotivation.length]);
+  }
+  recomputeWorkStreak();
+  saveWorkState();
+  renderWorkAll();
+}
+function workRecommendation(title) {
+  const value = title.toLowerCase();
+  if (/dissertation|essay|reading|fieldwork|study/.test(value)) return ["study", "daily", "High", "Moves the largest academic obligation forward through consistent, manageable progress."];
+  if (/job|application|cv|cover letter|linkedin|interview/.test(value)) return ["jobs", "weekly", "High", "Converts ambition into visible opportunities."];
+  if (/portfolio|website|case study|seo/.test(value)) return ["portfolio", "weekly", "High", "Turns your ability into proof that other people can hire."];
+  if (/client|brand|logo|strategy|deck/.test(value)) return ["client", "weekly", "High", "Builds evidence of creative problem-solving and commercial taste."];
+  if (/ai|coding|web design|marketing|sales/.test(value)) return ["skills", "weekly", "High", "Builds high-income capability that compounds over time."];
+  if (/email|calendar|budget|invoice|admin/.test(value)) return ["adminWork", "weekly", "Medium", "Protects the creative life from chaos."];
+  return ["creativeWork", "weekly", "Medium", "Turns a useful intention into visible proof."];
+}
+function renderWorkAll() {
+  const renderers = [renderWorkBoard, renderWorkSummary, renderWorkTracker, renderWorkEvents, renderWorkReview];
+  renderers.forEach(renderer => {
+    try { renderer(); }
+    catch (error) { console.error(`Work renderer failed: ${renderer.name}`, error); }
+  });
+}
+function workTrackerDates() {
+  if (workTrackerView === "month") {
+    const start = new Date(workTrackerDate.getFullYear(), workTrackerDate.getMonth(), 1);
+    return Array.from({ length: new Date(workTrackerDate.getFullYear(), workTrackerDate.getMonth() + 1, 0).getDate() }, (_, index) => addDays(start, index));
+  }
+  const start = startOfWeek(workTrackerDate);
+  return Array.from({ length: 7 }, (_, index) => addDays(start, index));
+}
+function renderWorkTracker() {
+  const tables = document.getElementById("workTrackerTables");
+  const archive = document.getElementById("workArchiveWindow");
+  if (!tables || !archive) return;
+  document.querySelectorAll(".work-tracker-tab").forEach(tab => tab.classList.toggle("active", tab.dataset.workView === workTrackerView));
+  archive.hidden = workTrackerView !== "archive";
+  tables.hidden = workTrackerView === "archive";
+  if (workTrackerView === "archive") {
+    const months = [...new Set(Object.keys(workState.days).map(key => key.slice(0, 7)))].sort().reverse();
+    document.getElementById("workArchiveMonths").innerHTML = months.length ? months.map(month => {
+      const count = Object.entries(workState.days).filter(([key]) => key.startsWith(month)).reduce((sum, [, day]) => sum + Object.values(day.checked || {}).filter(Boolean).length, 0);
+      return `<button class="archive-month" data-work-month="${month}"><strong>${new Date(`${month}-01T00:00:00`).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}</strong><span>${count} tasks filed</span></button>`;
+    }).join("") : `<p class="optional-empty">Complete a work task and the blue archive will begin.</p>`;
+    document.querySelectorAll("[data-work-month]").forEach(button => button.addEventListener("click", () => {
+      workTrackerDate = parseDate(`${button.dataset.workMonth}-01`);
+      workTrackerView = "month";
+      renderWorkTracker();
+    }));
+    document.getElementById("workTrackerPeriod").textContent = "Blue archive";
+    return;
+  }
+  const dates = workTrackerDates();
+  document.getElementById("workTrackerPeriod").textContent = workTrackerView === "week"
+    ? `${dates[0].toLocaleDateString("en-GB", { day: "numeric", month: "short" })} – ${dates[6].toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+    : workTrackerDate.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+  tables.innerHTML = Object.entries(workCategoryMeta).map(([category, meta]) => {
+    const tasks = workTasks.filter(task => task.category === category && !task.deleted);
+    if (!tasks.length) return "";
+    return `<section class="tracker-block"><div class="tracker-block-head"><h3>${meta.icon} ${meta.label}</h3><span class="mono">${tasks.length} tasks</span></div><div class="tracker-scroll"><table class="habit-table"><thead><tr><th class="habit-name">Work task</th>${dates.map(date => `<th>${date.toLocaleDateString("en-GB", { weekday: "short", day: "numeric" })}</th>`).join("")}</tr></thead><tbody>${tasks.map(task => `<tr><th class="habit-name">${escapeHTML(task.title)}<small>${frequencyLabel(task.frequency)}</small></th>${dates.map(date => `<td><button class="tracker-cell ${workState.days[dateKey(date)]?.checked?.[task.id] ? "done" : ""} ${dateKey(date) === TODAY_KEY ? "today" : ""}" data-work-cell="${task.id}" data-work-date="${dateKey(date)}">✓</button></td>`).join("")}</tr>`).join("")}</tbody></table></div></section>`;
+  }).join("");
+  tables.querySelectorAll("[data-work-cell]").forEach(button => button.addEventListener("click", () => toggleWorkTaskOnDate(button.dataset.workCell, button.dataset.workDate)));
+}
+function toggleWorkTaskOnDate(id, key) {
+  const day = ensureWorkDay(key);
+  day.checked[id] = !day.checked[id];
+  workState.totalTicks = Object.values(workState.days).reduce((sum, item) => sum + Object.values(item.checked || {}).filter(Boolean).length, 0);
+  recomputeWorkStreak();
+  saveWorkState();
+  renderWorkAll();
+}
+function moveWorkTracker(amount) {
+  workTrackerDate = workTrackerView === "month" ? new Date(workTrackerDate.getFullYear(), workTrackerDate.getMonth() + amount, 1) : addDays(workTrackerDate, amount * 7);
+  renderWorkTracker();
+}
+function renderWorkBoard() {
+  const board = document.getElementById("workTaskBoard");
+  if (!board) return;
+  const visible = (workFilter === "all" ? workTasks : activeWorkTasks()).filter(task => workFilter === "all" || (workFilter === "today" && (task.frequency === "daily" || !isWorkComplete(task))) || (workFilter === "completed" && isWorkComplete(task)) || task.frequency === workFilter);
+  document.querySelectorAll(".work-task-filter").forEach(button => button.classList.toggle("active", button.dataset.workFilter === workFilter));
+  board.innerHTML = Object.entries(workCategoryMeta).map(([key, meta]) => {
+    const tasks = visible.filter(task => task.category === key);
+    if (!tasks.length) return "";
+    return `<section class="life-category"><div class="life-category-head"><span class="category-symbol">${meta.icon}</span><div><p class="section-label">Blue archive</p><h3>${meta.label}</h3></div><span class="mono">${tasks.length} tasks</span></div><div class="command-card-grid">${tasks.map(task => `<article class="command-habit work-command ${isWorkComplete(task) ? "done" : ""} ${task.paused ? "is-paused" : ""}"><div class="command-habit-top"><span class="frequency-badge frequency-${task.frequency}">${frequencyLabel(task.frequency)}</span><span class="due-status">${task.paused ? "Paused." : isWorkComplete(task) ? "Already filed." : task.deadline ? `Due ${task.deadline}` : "Ready when you are."}</span></div><div class="command-habit-title"><span>${meta.icon}</span><div><p>${meta.label}</p><h4>${escapeHTML(task.title)}</h4></div></div><p class="command-habit-copy">${escapeHTML(task.why || task.description || "")}</p>${task.duration ? `<p class="mono">Estimate · ${escapeHTML(task.duration)}</p>` : ""}${task.custom ? `<div class="custom-ritual-actions"><button data-edit-work-task="${task.id}">Edit</button><button data-pause-work-task="${task.id}">${task.paused ? "Resume" : "Pause"}</button><button data-delete-work-task="${task.id}">Delete</button></div>` : ""}<button class="ritual-check" data-work-task-id="${task.id}" ${task.paused ? "disabled" : ""}>${isWorkComplete(task) ? "✓ Proof filed" : "Complete task"}</button></article>`).join("")}</div></section>`;
+  }).join("") || `<div class="empty-rituals"><h3>The desk is clear.</h3><p>Tiny task. Large consequence.</p></div>`;
+  board.querySelectorAll("[data-work-task-id]").forEach(button => button.addEventListener("click", () => toggleWorkTask(button.dataset.workTaskId)));
+  board.querySelectorAll("[data-edit-work-task]").forEach(button => button.addEventListener("click", () => openWorkTaskEditor(button.dataset.editWorkTask)));
+  board.querySelectorAll("[data-pause-work-task]").forEach(button => button.addEventListener("click", () => updateCustomWorkTask(button.dataset.pauseWorkTask, "pause")));
+  board.querySelectorAll("[data-delete-work-task]").forEach(button => button.addEventListener("click", () => updateCustomWorkTask(button.dataset.deleteWorkTask, "delete")));
+}
+function renderWorkSummary() {
+  const active = activeWorkTasks();
+  const completed = active.filter(isWorkComplete).length;
+  const percentage = Math.round(completed / Math.max(1, active.length) * 100);
+  const info = workLevelInfo();
+  const next = workEvents.filter(event => event.status !== "archived" && daysUntil(event.date) >= 0).sort((a, b) => a.date.localeCompare(b.date))[0];
+  document.getElementById("workDoneCount").textContent = `${completed} / ${active.length} tasks`;
+  document.getElementById("workProgressPercent").textContent = `${percentage}%`;
+  document.getElementById("workProgressPie").style.setProperty("--p", percentage);
+  document.getElementById("workLevelText").textContent = `Level ${info.number} · ${info.name}`;
+  document.getElementById("workLevelBarFill").style.width = `${info.next === Infinity ? 100 : Math.round((workState.totalTicks - info.min) / (info.next - info.min) * 100)}%`;
+  document.getElementById("workCommandSummary").innerHTML = [["Tasks due", active.length - completed], ["Completed", completed], ["Work streak", `${workState.streak || 0} days`], ["Work level", `L${info.number} · ${info.name}`], ["Next deadline", next?.name || "No deadline filed"], ["Total proof", workState.totalTicks]].map(([label, value]) => `<article class="summary-tile"><span>${label}</span><strong>${escapeHTML(String(value))}</strong></article>`).join("");
+  document.getElementById("workLevelCard").innerHTML = `<p class="section-label">Current work rank</p><h3>Level ${info.number} · ${info.name}</h3><p>${workState.totalTicks} completed tasks archived. Next rank: ${workLevels[info.number] || "Complete blue archive"}.</p>`;
+}
+function workEventReadiness(event) {
+  const links = [...(event.ritualLinks || [])];
+  workTasks.filter(task => task.linkedEvent === event.id && !links.some(link => link.ritualId === task.id)).forEach(task => links.push({ ritualId: task.id, importance: task.importance }));
+  const total = links.reduce((sum, link) => sum + importanceWeight(link.importance), 0);
+  const complete = links.reduce((sum, link) => {
+    const task = workTasks.find(item => item.id === link.ritualId);
+    return sum + (task && isWorkComplete(task) ? importanceWeight(link.importance) : 0);
+  }, 0);
+  return total ? Math.round(complete / total * 100) : 0;
+}
+function renderWorkEvents() {
+  const grid = document.getElementById("workEventGrid");
+  const nextCard = document.getElementById("nextWorkDeadline");
+  if (!grid || !nextCard) return;
+  const active = workEvents.filter(event => event.status !== "archived").sort((a, b) => a.date.localeCompare(b.date));
+  const archived = workEvents.filter(event => event.status === "archived").sort((a, b) => b.date.localeCompare(a.date));
+  const next = active.find(event => daysUntil(event.date) >= 0);
+  nextCard.innerHTML = next ? `<div><p class="section-label">Next deadline</p><h3>${escapeHTML(next.name)}</h3><p>${daysUntil(next.date) === 0 ? "Deadline day has arrived." : `${daysUntil(next.date)} days remaining.`}</p></div><strong>${workEventReadiness(next)}% ready</strong>` : `<div><p class="section-label">Next deadline</p><h3>File the future.</h3><p>No work deadline exists yet.</p></div>`;
+  grid.innerHTML = active.length || archived.length ? active.map(event => `<article class="event-card ${daysUntil(event.date) <= 6 ? "urgency-near" : ""}"><div class="event-card-top"><span>${escapeHTML(event.category)}</span><span>${event.date}</span></div><h3>${escapeHTML(event.name)}</h3><p class="event-countdown">${daysUntil(event.date) < 0 ? "This deadline has passed." : `${daysUntil(event.date)} days remaining.`}</p><div class="event-readiness-bar"><div style="width:${workEventReadiness(event)}%"></div></div><div class="event-card-bottom"><span>Readiness ${workEventReadiness(event)}%</span><button data-open-work-event="${event.id}">Open</button></div></article>`).join("") + archived.map(event => `<article class="event-card work-event-archived"><div class="event-card-top"><span>Blue archive</span><span>${event.date}</span></div><h3>${escapeHTML(event.name)}</h3><p class="event-countdown">Deadline witnessed and filed.</p><div class="event-card-bottom"><span>Archived</span><button data-open-work-event="${event.id}">Reflect</button></div></article>`).join("") : `<div class="event-empty"><span>□</span><h3>No deadlines yet.</h3><p>Every future needs a filing system.</p></div>`;
+  grid.querySelectorAll("[data-open-work-event]").forEach(button => button.addEventListener("click", () => openWorkEventDetail(button.dataset.openWorkEvent)));
+  grid.querySelectorAll("[data-archive-work-event]").forEach(button => button.addEventListener("click", () => {
+    const item = workEvents.find(event => event.id === button.dataset.archiveWorkEvent);
+    if (item) { item.status = "archived"; item.archivedAt = new Date().toISOString(); saveCollection(WORK_EVENTS_KEY, workEvents); renderWorkEvents(); }
+  }));
+}
+function openWorkEventDetail(id) {
+  const event = workEvents.find(item => item.id === id);
+  const detail = document.getElementById("workEventDetail");
+  if (!event || !detail) return;
+  const linked = (event.ritualLinks || []).map(link => workTasks.find(task => task.id === link.ritualId)).filter(Boolean);
+  detail.hidden = false;
+  detail.innerHTML = `<div class="event-detail-hero"><button class="event-detail-close" data-close-work-detail>← Back to deadlines</button><p class="section-label">${escapeHTML(event.category)}</p><h2>${escapeHTML(event.name)}</h2><p class="event-detail-countdown">${event.status === "archived" ? "Deadline witnessed and filed." : daysUntil(event.date) === 0 ? "Deadline day has arrived." : `${daysUntil(event.date)} days remaining.`}</p><blockquote>${escapeHTML(event.motivation)}</blockquote><div class="event-detail-actions"><button class="secondary-btn" data-edit-work-event="${event.id}">Edit deadline</button>${event.status !== "archived" ? `<button class="primary-btn" data-archive-work-event="${event.id}">Archive deadline</button>` : ""}</div></div><div class="event-metrics"><article><span>Readiness</span><strong>${workEventReadiness(event)}%</strong><p>Preparation becomes opportunity.</p></article><article><span>Required tasks</span><strong>${linked.length}</strong><p>${linked.filter(isWorkComplete).length} already filed.</p></article><article><span>Event date</span><strong>${event.date}</strong><p>Your ambition has a due date.</p></article></div><div class="event-story"><article><p class="section-label">Goal</p><h3>${escapeHTML(event.goal)}</h3></article><article><p class="section-label">Private notes</p><h3>${escapeHTML(event.notes || "No notes filed yet.")}</h3></article></div><div class="event-linked-list"><h3>Required proof</h3>${linked.map(task => `<article class="${isWorkComplete(task) ? "done" : ""}"><span>${workCategoryMeta[task.category]?.icon || "□"}</span><div><strong>${escapeHTML(task.title)}</strong><p>${escapeHTML(task.why || "")}</p></div><em>${isWorkComplete(task) ? "Filed" : "Waiting"}</em></article>`).join("") || "<p>No required tasks selected yet.</p>"}</div>`;
+  detail.querySelector("[data-close-work-detail]").addEventListener("click", () => detail.hidden = true);
+  detail.querySelector("[data-edit-work-event]")?.addEventListener("click", () => openWorkEventEditor(id));
+  detail.querySelector("[data-archive-work-event]")?.addEventListener("click", () => { event.status = "archived"; event.archivedAt = new Date().toISOString(); saveCollection(WORK_EVENTS_KEY, workEvents); renderWorkEvents(); openWorkEventDetail(id); });
+  detail.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function renderWorkReview() {
+  const active = activeWorkTasks();
+  const completed = active.filter(isWorkComplete);
+  const counts = {};
+  completed.forEach(task => counts[task.category] = (counts[task.category] || 0) + 1);
+  const best = Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
+  document.getElementById("workReviewGrid").innerHTML = [["Today’s completion", `${Math.round(completed.length / Math.max(1, active.length) * 100)}%`, "Build proof, not panic."], ["Strongest file", best ? workCategoryMeta[best].label : "Awaiting first task", "The blue archive remembers."], ["Total completed", workState.totalTicks, "Tiny task. Large consequence."], ["Command note", workMotivation[workState.totalTicks % workMotivation.length], "Preparation becomes opportunity."]].map(([label, value, copy]) => `<article class="review-card"><p class="section-label">${label}</p><h3>${value}</h3><p>${copy}</p></article>`).join("");
+}
+function prepareModePieces(page, phase) {
+  const selectors = [
+    ".hero-copy > *", ".hero-pie-card", ".hero-bottom-note",
+    ".section-head > *", ".summary-tile", ".work-level-card", ".score-card",
+    ".habit-filters", ".life-category-head", ".command-habit",
+    ".tracker-toolbar", ".tracker-block", ".next-dday", ".event-card", ".review-card"
+  ].join(",");
+  const pieces = [...page.querySelectorAll(selectors)].filter(element => {
+    const rect = element.getBoundingClientRect();
+    return rect.bottom > -120 && rect.top < innerHeight + 180;
+  }).slice(0, 42);
+  pieces.forEach((piece, index) => {
+    const direction = index % 2 ? 1 : -1;
+    const lane = (index % 7) - 3;
+    piece.classList.add("mode-piece", phase);
+    piece.style.setProperty("--piece-index", index);
+    piece.style.setProperty("--scatter-x", `${direction * (24 + (index % 4) * 16)}px`);
+    piece.style.setProperty("--scatter-y", `${lane * 15 + 34 + (index % 3) * 14}px`);
+    piece.style.setProperty("--scatter-r", `${direction * (.25 + (index % 4) * .18)}deg`);
+    piece.style.setProperty("--float-scale", `${.96 + (index % 3) * .01}`);
+  });
+  return pieces;
+}
+function clearModePieces(pieces) {
+  pieces.forEach(piece => {
+    piece.classList.remove("mode-piece", "mode-piece--leaving", "mode-piece--entering");
+    piece.style.removeProperty("--piece-index");
+    piece.style.removeProperty("--scatter-x");
+    piece.style.removeProperty("--scatter-y");
+    piece.style.removeProperty("--scatter-r");
+    piece.style.removeProperty("--float-scale");
+  });
+}
+function switchMode(mode) {
+  if (mode === currentMode || document.body.classList.contains("mode-transitioning")) return;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const outgoing = document.getElementById(currentMode === "glow" ? "glowMode" : "workMode");
+  const incoming = document.getElementById(mode === "glow" ? "glowMode" : "workMode");
+  const leavingPieces = reduced ? [] : prepareModePieces(outgoing, "mode-piece--leaving");
+  document.body.classList.add("mode-transitioning", "mode-deconstructing", `transition-to-${mode}`);
+  setTimeout(() => {
+    try {
+      currentMode = mode;
+      document.body.classList.toggle("mode-glow", mode === "glow");
+      document.body.classList.toggle("mode-work", mode === "work");
+      document.getElementById("glowMode").hidden = mode !== "glow";
+      document.getElementById("workMode").hidden = mode !== "work";
+      document.querySelector(".glow-nav").hidden = mode !== "glow";
+      document.querySelector(".work-nav").hidden = mode !== "work";
+      document.querySelectorAll(".mode-switch").forEach(button => button.classList.toggle("active", button.dataset.mode === mode));
+      document.querySelector(".brand em").textContent = mode === "glow" ? "Glow-Up" : "Work Atelier";
+      document.getElementById("streakHeader").textContent = mode === "glow" ? `Streak ${state.streak || 0}` : `Work ${workState.totalTicks} filed`;
+      if (mode === "work") renderWorkAll(); else renderAll();
+      forcePageTop();
+      clearModePieces(leavingPieces);
+      document.body.classList.remove("mode-deconstructing");
+      document.body.classList.add("mode-reconstructing");
+      const enteringPieces = reduced ? [] : prepareModePieces(incoming, "mode-piece--entering");
+      requestAnimationFrame(() => requestAnimationFrame(() => incoming.classList.add("mode-page--assembled")));
+      setTimeout(() => {
+        clearModePieces(enteringPieces);
+        incoming.classList.remove("mode-page--assembled");
+      }, reduced ? 10 : 1150);
+    } finally {
+      setTimeout(() => document.body.classList.remove("mode-transitioning", "mode-reconstructing", "transition-to-work", "transition-to-glow"), reduced ? 30 : 1250);
+    }
+  }, reduced ? 20 : 720);
+}
+function initialiseWorkMode() {
+  document.body.classList.add("mode-glow");
+  document.querySelectorAll(".mode-switch").forEach(button => button.addEventListener("click", () => switchMode(button.dataset.mode)));
+  document.querySelectorAll(".work-task-filter").forEach(button => button.addEventListener("click", () => { workFilter = button.dataset.workFilter; renderWorkBoard(); }));
+  document.querySelectorAll(".work-tracker-tab").forEach(button => button.addEventListener("click", () => { workTrackerView = button.dataset.workView; renderWorkTracker(); }));
+  document.getElementById("workTrackerPrev")?.addEventListener("click", () => moveWorkTracker(-1));
+  document.getElementById("workTrackerNext")?.addEventListener("click", () => moveWorkTracker(1));
+  document.getElementById("workTrackerToday")?.addEventListener("click", () => { workTrackerDate = new Date(); workTrackerView = "week"; renderWorkTracker(); });
+  document.getElementById("workBoostBtn")?.addEventListener("click", () => showToast(workMotivation[Math.floor(Math.random() * workMotivation.length)]));
+  const taskForm = document.getElementById("workTaskEditorForm");
+  const eventForm = document.getElementById("workEventEditorForm");
+  document.getElementById("workTaskCategory").innerHTML = Object.entries(workCategoryMeta).map(([key, meta]) => `<option value="${key}">${meta.label}</option>`).join("");
+  refreshWorkEventSelect();
+  document.getElementById("openWorkTaskCreator").addEventListener("click", () => openWorkTaskEditor());
+  document.getElementById("openWorkEventCreator").addEventListener("click", () => openWorkEventEditor());
+  document.querySelectorAll("[data-close-work-modal]").forEach(button => button.addEventListener("click", () => document.getElementById(button.dataset.closeWorkModal).hidden = true));
+  taskForm.elements.title.addEventListener("input", () => {
+    const [category, frequency, importance, why] = workRecommendation(taskForm.elements.title.value);
+    document.getElementById("workTaskRecommendation").innerHTML = `Suggested category: <strong>${workCategoryMeta[category].label}</strong>. I recommend a <strong>${frequencyLabel(frequency)}</strong>. ${why}`;
+    taskForm.dataset.suggestion = JSON.stringify({ category, frequency, importance, why });
+  });
+  taskForm.addEventListener("submit", event => {
+    event.preventDefault();
+    const data = new FormData(taskForm);
+    const suggestion = JSON.parse(taskForm.dataset.suggestion || '{"category":"creativeWork","frequency":"weekly","importance":"Medium","why":"Turns intention into proof."}');
+    const existing = customWorkTasks.find(task => task.id === data.get("taskId"));
+    const record = { ...(existing || {}), id: existing?.id || `work_${Date.now()}`, title: data.get("title").trim(), category: data.get("category") || suggestion.category, frequency: data.get("frequency") || suggestion.frequency, importance: data.get("importance") || suggestion.importance, deadline: data.get("deadline"), duration: data.get("duration").trim(), linkedEvent: data.get("linkedEvent"), why: data.get("why").trim() || suggestion.why, notes: data.get("notes").trim(), mode: "work", custom: true };
+    if (existing) customWorkTasks[customWorkTasks.findIndex(task => task.id === existing.id)] = record; else customWorkTasks.push(record);
+    workTasks = [...builtInWorkTasks, ...customWorkTasks.filter(task => !task.deleted)]; saveCollection(WORK_TASKS_KEY, customWorkTasks); document.getElementById("workTaskEditorModal").hidden = true; renderWorkAll(); showToast("Work task filed. The future has receipts.");
+  });
+  eventForm.addEventListener("submit", event => {
+    event.preventDefault();
+    const data = new FormData(eventForm);
+    const existing = workEvents.find(item => item.id === data.get("eventId"));
+    const ritualLinks = [...eventForm.querySelectorAll("[name='workEventTask']:checked")].map(input => ({ ritualId: input.value, importance: workTasks.find(task => task.id === input.value)?.importance || "High" }));
+    const record = { ...(existing || {}), id: existing?.id || `work_event_${Date.now()}`, name: data.get("name").trim(), date: data.get("date"), category: data.get("category"), goal: data.get("goal").trim(), motivation: data.get("motivation").trim(), notes: data.get("notes").trim(), ritualLinks, status: existing?.status || "active", createdAt: existing?.createdAt || new Date().toISOString() };
+    if (existing) workEvents[workEvents.findIndex(item => item.id === existing.id)] = record; else workEvents.push(record);
+    saveCollection(WORK_EVENTS_KEY, workEvents); refreshWorkEventSelect(); document.getElementById("workEventEditorModal").hidden = true; renderWorkEvents(); showToast("Deadline filed. Preparation becomes opportunity.");
+  });
+}
+function openWorkTaskEditor(id = "") {
+  const form = document.getElementById("workTaskEditorForm");
+  form.reset();
+  const task = customWorkTasks.find(item => item.id === id);
+  if (task) Object.entries(task).forEach(([key, value]) => { if (form.elements[key] && value != null) form.elements[key].value = value; });
+  form.elements.taskId.value = task?.id || "";
+  document.getElementById("workTaskEditorTitle").textContent = task ? "Edit Work Task." : "Add a Work Task.";
+  document.getElementById("workTaskEditorModal").hidden = false;
+}
+function updateCustomWorkTask(id, action) {
+  const task = customWorkTasks.find(item => item.id === id);
+  if (!task) return;
+  if (action === "delete") task.deleted = true;
+  else task.paused = !task.paused;
+  workTasks = [...builtInWorkTasks, ...customWorkTasks.filter(item => !item.deleted)];
+  saveCollection(WORK_TASKS_KEY, customWorkTasks);
+  renderWorkAll();
+}
+function refreshWorkEventSelect() {
+  const select = document.getElementById("workTaskEditorForm")?.elements.linkedEvent;
+  if (select) select.innerHTML = `<option value="">None</option>${workEvents.filter(event => event.status !== "archived").map(event => `<option value="${event.id}">${escapeHTML(event.name)}</option>`).join("")}`;
+}
+function openWorkEventEditor(id = "") {
+  const form = document.getElementById("workEventEditorForm");
+  const event = workEvents.find(item => item.id === id);
+  form.reset();
+  if (event) Object.entries(event).forEach(([key, value]) => { if (form.elements[key] && value != null) form.elements[key].value = value; });
+  form.elements.eventId.value = event?.id || "";
+  document.getElementById("workEventEditorTitle").textContent = event ? "Edit Deadline." : "Create a Deadline.";
+  renderWorkEventTaskPicker(new Set((event?.ritualLinks || []).map(link => link.ritualId)));
+  document.getElementById("workEventEditorModal").hidden = false;
+}
+function renderWorkEventTaskPicker(selected = new Set()) {
+  const picker = document.getElementById("workEventTaskPicker");
+  picker.innerHTML = activeWorkTasks().map(task => `<label class="habit-update-option"><input type="checkbox" name="workEventTask" value="${task.id}" ${selected.has(task.id) ? "checked" : ""}/><span>${workCategoryMeta[task.category]?.icon || "□"}</span><span><strong>${escapeHTML(task.title)}</strong><small>${frequencyLabel(task.frequency)} · ${task.importance || "High"} importance</small></span></label>`).join("");
+}
 function renderAll() {
   renderHabitBoard();
   renderSummary();
@@ -1147,6 +1596,7 @@ function renderAll() {
   renderReview();
   renderDailyArchive();
   renderEvents();
+  if (currentMode === "work") renderWorkAll();
 }
 
 const cursor = document.querySelector(".cursor");
@@ -1227,16 +1677,29 @@ const observer = new IntersectionObserver(entries => entries.forEach(entry => {
 }), { threshold: .12 });
 if (currentSection) observer.observe(currentSection);
 
-renderAll();
-renderMeasurements();
 initialiseCheckinForms();
-initialiseAtelier();
-applyTimeTheme();
-setInterval(applyTimeTheme, 5 * 60 * 1000);
-bindCursorLabels();
-saveState();
-forcePageTop();
-setTimeout(forcePageTop, 0);
-setTimeout(forcePageTop, 100);
-setTimeout(forcePageTop, 500);
 runDailyCheckinPriority();
+try {
+  initialiseWorkMode();
+  renderWorkAll();
+} catch (error) {
+  console.error("Work Mode startup error:", error);
+}
+try {
+  migrateToTwoModes();
+  renderAll();
+  renderMeasurements();
+  initialiseAtelier();
+  renderWorkAll();
+  applyTimeTheme();
+  setInterval(applyTimeTheme, 5 * 60 * 1000);
+  bindCursorLabels();
+  saveState();
+  forcePageTop();
+  setTimeout(forcePageTop, 0);
+  setTimeout(forcePageTop, 100);
+  setTimeout(forcePageTop, 500);
+} catch (error) {
+  console.error("Dashboard startup error:", error);
+  runDailyCheckinPriority();
+}

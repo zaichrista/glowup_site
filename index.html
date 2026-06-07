@@ -25,7 +25,11 @@
 
   <header class="site-header">
     <a href="#home" class="brand" data-cursor="home">Zai <em>Glow-Up</em></a>
-    <nav class="nav" aria-label="Primary navigation">
+    <div class="mode-switcher" aria-label="Dashboard mode">
+      <button class="mode-switch active" type="button" data-mode="glow"><strong>Glow-Up</strong><small>Body &amp; Beauty</small></button>
+      <button class="mode-switch" type="button" data-mode="work"><strong>Work Mode</strong><small>Mind &amp; Money</small></button>
+    </div>
+    <nav class="nav glow-nav" aria-label="Glow-Up navigation">
       <a href="#home" data-cursor="track">Today</a>
       <a href="#tracker" data-cursor="track">Tracker</a>
       <a href="#rituals" data-cursor="build">Rituals</a>
@@ -34,10 +38,16 @@
       <a href="#measurements" data-cursor="log">Measures</a>
       <a href="#reset" data-cursor="careful">Reset</a>
     </nav>
+    <nav class="nav work-nav" aria-label="Work navigation" hidden>
+      <a href="#work-home">Today</a>
+      <a href="#work-tasks">Tasks</a>
+      <a href="#work-events">Deadlines</a>
+      <a href="#work-review">Review</a>
+    </nav>
     <div class="availability" id="streakHeader">Streak 0</div>
   </header>
 
-  <main>
+  <main id="glowMode" class="mode-page mode-page--glow">
     <section id="home" class="hero section">
       <div class="hero-copy">
         <p class="kicker">June–September 2026 · Princess Discipline Mode</p>
@@ -230,6 +240,88 @@
     </section>
   </main>
 
+  <main id="workMode" class="mode-page mode-page--work" hidden>
+    <section id="work-home" class="hero work-hero section">
+      <div class="hero-copy">
+        <p class="kicker">Mind · Money · Mastery · Momentum</p>
+        <h1><span>The Work</span><span>Atelier</span></h1>
+        <p class="intro">Study, strategy, applications, projects, and the future being built in public.</p>
+        <div class="hero-actions">
+          <a href="#work-tasks" class="text-link">Open today’s work <span>＋</span></a>
+          <button class="text-button muted" id="workBoostBtn" type="button">Give me focus</button>
+        </div>
+      </div>
+      <article class="hero-pie-card work-pie-card">
+        <div class="hero-pie-top"><p class="section-label">Today’s work completion</p><strong id="workDoneCount">0 / 0 tasks</strong></div>
+        <div class="pie-wrap"><div class="pie pie--hero" id="workProgressPie"><span id="workProgressPercent">0%</span></div></div>
+        <p class="duo-line" id="workMotivationLine">This is where the glow-up becomes employable.</p>
+        <div class="level-bar"><div id="workLevelBarFill"></div></div>
+        <p class="mono" id="workLevelText">Level 1 · The Apprentice</p>
+      </article>
+      <div class="hero-bottom-note"><span>Blue Work Mode</span><span>Oxford discipline · Vogue execution</span></div>
+    </section>
+
+    <section class="dashboard section">
+      <div class="section-head"><div><p class="section-label">Blue command summary</p><h2>The future, filed.</h2></div></div>
+      <div class="command-summary" id="workCommandSummary"></div>
+      <div class="work-level-card" id="workLevelCard"></div>
+    </section>
+
+    <section id="work-tasks" class="ritual-board section">
+      <div class="section-head">
+        <div><p class="section-label">Study · work · creative production</p><h2>Today’s work tasks.</h2></div>
+        <button class="secondary-btn" id="openWorkTaskCreator" type="button">Add a Work Task</button>
+      </div>
+      <div class="habit-filters" id="workTaskFilters">
+        <button class="work-task-filter active" data-work-filter="today">Today</button>
+        <button class="work-task-filter" data-work-filter="daily">Daily</button>
+        <button class="work-task-filter" data-work-filter="weekly">Weekly</button>
+        <button class="work-task-filter" data-work-filter="biweekly">Biweekly</button>
+        <button class="work-task-filter" data-work-filter="monthly">Monthly</button>
+        <button class="work-task-filter" data-work-filter="all">All</button>
+        <button class="work-task-filter" data-work-filter="completed">Completed</button>
+      </div>
+      <div class="life-category-board" id="workTaskBoard"></div>
+    </section>
+
+    <section id="work-tracker" class="tracker section">
+      <div class="section-head tracker-head">
+        <div><p class="section-label">Work progress archive</p><h2>Your blue receipts.</h2></div>
+        <div class="tracker-tabs" role="tablist" aria-label="Work tracker view">
+          <button class="work-tracker-tab active" data-work-view="week">Week</button>
+          <button class="work-tracker-tab" data-work-view="month">Month</button>
+          <button class="work-tracker-tab" data-work-view="archive">Archive</button>
+        </div>
+      </div>
+      <div class="tracker-toolbar">
+        <button class="tracker-arrow" id="workTrackerPrev" aria-label="Previous work period">←</button>
+        <strong id="workTrackerPeriod">This week</strong>
+        <button class="tracker-arrow" id="workTrackerNext" aria-label="Next work period">→</button>
+        <button class="tracker-today" id="workTrackerToday">Back to today</button>
+      </div>
+      <div id="workTrackerTables" class="tracker-tables"></div>
+      <div id="workArchiveWindow" class="archive-window" hidden>
+        <div class="archive-window-head"><div><p class="section-label">Blue month archive</p><h3>Proof at a glance.</h3></div></div>
+        <div id="workArchiveMonths" class="archive-months"></div>
+      </div>
+    </section>
+
+    <section id="work-events" class="events-atelier section">
+      <div class="section-head">
+        <div><p class="section-label">Work events &amp; deadlines</p><h2>Deadline Atelier.</h2><p class="atelier-subtitle">Your ambition has a due date.</p></div>
+        <button class="primary-btn" id="openWorkEventCreator" type="button">Create a Deadline</button>
+      </div>
+      <div class="next-dday" id="nextWorkDeadline"></div>
+      <div class="event-grid" id="workEventGrid"></div>
+      <div class="event-detail" id="workEventDetail" hidden></div>
+    </section>
+
+    <section id="work-review" class="ritual-review section">
+      <div class="section-head"><div><p class="section-label">Blue archive intelligence</p><h2>The Work Review.</h2></div></div>
+      <div class="review-grid" id="workReviewGrid"></div>
+    </section>
+  </main>
+
   <div class="level-modal" id="levelModal" hidden aria-live="polite">
     <div class="level-modal-card">
       <button class="level-modal-close" id="levelModalClose" aria-label="Close level-up message">×</button>
@@ -248,7 +340,7 @@
       <div class="atelier-fields">
         <label>Event name<input name="name" required /></label>
         <label>Event date<input name="date" type="date" required /></label>
-        <label>Category<select name="category"><option>Dress fitting</option><option>Holiday</option><option>Date / reunion</option><option>Birthday</option><option>Photoshoot</option><option>Wedding / party</option><option>Performance</option><option>Career moment</option><option>Personal reset</option><option>Custom</option></select></label>
+        <label>Category<select name="category"><option>Dress fitting</option><option>Holiday</option><option>Date / reunion</option><option>Birthday</option><option>Photoshoot</option><option>Wedding / party</option><option>Performance</option><option>Personal reset</option><option>Custom</option></select></label>
         <label>Desired feeling<input name="desiredFeeling" /></label>
         <label class="atelier-wide">Goal / reason<textarea name="goal" required></textarea></label>
         <label class="atelier-wide">Motivation note<textarea name="motivation" required></textarea></label>
@@ -304,6 +396,51 @@
       <button class="primary-btn" type="submit">Archive Event</button>
     </form>
   </div>
+
+  <div class="atelier-modal work-modal" id="workTaskEditorModal" hidden role="dialog" aria-modal="true" aria-labelledby="workTaskEditorTitle">
+    <form class="atelier-form atelier-form--ritual" id="workTaskEditorForm">
+      <button class="checkin-close" type="button" data-close-work-modal="workTaskEditorModal">×</button>
+      <p class="section-label">Blue archive addition</p>
+      <h2 id="workTaskEditorTitle">Add a Work Task.</h2>
+      <input type="hidden" name="taskId" />
+      <div class="atelier-fields">
+        <label class="atelier-wide">Task title<input name="title" required /></label>
+        <label>Category<select name="category" id="workTaskCategory"></select></label>
+        <label>Frequency<select name="frequency"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="monthly">Monthly</option><option value="one-time">One-time</option><option value="custom">Custom</option></select></label>
+        <label>Importance<select name="importance"><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></label>
+        <label>Deadline<input name="deadline" type="date" /></label>
+        <label>Estimated duration<input name="duration" placeholder="45 minutes" /></label>
+        <label>Linked deadline<select name="linkedEvent"><option value="">None</option></select></label>
+        <label class="atelier-wide">Why it matters<textarea name="why"></textarea></label>
+        <label class="atelier-wide">Notes<textarea name="notes"></textarea></label>
+      </div>
+      <div class="ritual-recommendation" id="workTaskRecommendation">Name the task and the blue atelier will suggest its filing system.</div>
+      <button class="primary-btn" type="submit">Save Work Task</button>
+    </form>
+  </div>
+
+  <div class="atelier-modal work-modal" id="workEventEditorModal" hidden role="dialog" aria-modal="true" aria-labelledby="workEventEditorTitle">
+    <form class="atelier-form" id="workEventEditorForm">
+      <button class="checkin-close" type="button" data-close-work-modal="workEventEditorModal">×</button>
+      <p class="section-label">Deadline Atelier</p>
+      <h2 id="workEventEditorTitle">Create a Deadline.</h2>
+      <input type="hidden" name="eventId" />
+      <div class="atelier-fields">
+        <label class="atelier-wide">Event name<input name="name" required /></label>
+        <label>Event date<input name="date" type="date" required /></label>
+        <label>Category<select name="category"><option>Dissertation deadline</option><option>Job application</option><option>Interview</option><option>Client presentation</option><option>Portfolio launch</option><option>Exam</option><option>Creative submission</option><option>Custom</option></select></label>
+        <label class="atelier-wide">Goal<textarea name="goal" required></textarea></label>
+        <label class="atelier-wide">Motivation<textarea name="motivation" required></textarea></label>
+        <label class="atelier-wide">Notes<textarea name="notes"></textarea></label>
+      </div>
+      <div class="event-ritual-picker">
+        <div class="event-picker-head"><h3>Required work tasks</h3><p>Choose the proof this deadline needs.</p></div>
+        <div class="work-event-task-picker" id="workEventTaskPicker"></div>
+      </div>
+      <button class="primary-btn" type="submit">Save Deadline</button>
+    </form>
+  </div>
+
   <div class="checkin-modal morning-checkin" id="morningCheckinModal" hidden aria-modal="true" role="dialog" aria-labelledby="morningCheckinTitle">
     <form class="checkin-card checkin-card--morning" id="morningCheckinForm">
       <div class="checkin-intro">
