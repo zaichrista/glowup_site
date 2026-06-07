@@ -325,87 +325,135 @@
   </main>
 
   <main id="calendarMode" class="mode-page mode-page--calendar" hidden>
-    <section id="calendar" class="calendar-hero section">
-      <div class="hero-copy">
-        <p class="kicker">Time · Ritual · Deadline · Becoming</p>
-        <h1><span>The Archive</span><span>Calendar</span></h1>
-        <p class="intro">A visual map of the rituals, deadlines, and D-days building your life.</p>
-        <p class="hero-label">Day · Week · Month · Life Map</p>
-        <div class="hero-copy-note">This is where the glow-up becomes scheduled.</div>
-      </div>
-    </section>
-
-    <section class="calendar-summary section">
-      <div class="summary-cards">
-        <article class="summary-card">
-          <p class="section-label">Today</p>
-          <strong id="todaySummaryCount">0 items</strong>
-          <p id="todaySummaryText">Nothing scheduled.</p>
-        </article>
-        <article class="summary-card">
-          <p class="section-label">This week</p>
-          <strong id="weekSummaryCount">0 deadlines</strong>
-          <p id="weekSummaryText">Plan ahead.</p>
-        </article>
-        <article class="summary-card">
-          <p class="section-label">Next event</p>
-          <strong id="nextEventDate">—</strong>
-          <p id="nextEventName">No events scheduled.</p>
-        </article>
-        <article class="summary-card">
-          <p class="section-label">Completed today</p>
-          <strong id="completedTodayCount">0 / 0</strong>
-          <p id="completedTodayText">Keep going.</p>
-        </article>
-      </div>
-    </section>
-
-    <section class="calendar-main section">
-      <div class="calendar-toolbar">
-        <div class="calendar-controls">
-          <button class="calendar-nav-btn" id="calendarPrev" aria-label="Previous period">←</button>
-          <strong id="calendarPeriodLabel">This week</strong>
-          <button class="calendar-nav-btn" id="calendarNext" aria-label="Next period">→</button>
-          <button class="calendar-today-btn" id="calendarToday">Today</button>
+    <div class="calendar-page-wrapper">
+      <!-- Calendar Sidebar -->
+      <aside class="calendar-sidebar">
+        <div class="calendar-sidebar-header">
+          <h3>Calendars</h3>
         </div>
-        <div class="calendar-view-switcher">
-          <button class="calendar-view-btn active" data-calendar-view="week">Week</button>
-          <button class="calendar-view-btn" data-calendar-view="day">Day</button>
-          <button class="calendar-view-btn" data-calendar-view="month">Month</button>
+
+        <!-- Glow Categories Dropdown -->
+        <div class="calendar-category-section">
+          <button class="category-dropdown-toggle" data-dropdown="glow-categories">
+            <span class="dropdown-arrow">▼</span>
+            <span class="dropdown-label">Glow Categories</span>
+          </button>
+          <div class="category-dropdown-content" id="glow-categories" hidden>
+            <div class="category-checkboxes">
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="body" data-mode="glow" checked />
+                <span class="checkbox-label">Body</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="waist" data-mode="glow" checked />
+                <span class="checkbox-label">Waist</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="glutes" data-mode="glow" checked />
+                <span class="checkbox-label">Glutes</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="posture" data-mode="glow" checked />
+                <span class="checkbox-label">Posture</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="hair" data-mode="glow" checked />
+                <span class="checkbox-label">Hair</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="beauty" data-mode="glow" checked />
+                <span class="checkbox-label">Beauty</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="food" data-mode="glow" checked />
+                <span class="checkbox-label">Food / Protein</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="water" data-mode="glow" checked />
+                <span class="checkbox-label">Water</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="sleep" data-mode="glow" checked />
+                <span class="checkbox-label">Sleep</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="soul" data-mode="glow" checked />
+                <span class="checkbox-label">Soul / Mind</span>
+              </label>
+            </div>
+          </div>
         </div>
-      </div>
 
-      <div class="calendar-filters">
-        <div class="filter-section">
-          <button class="filter-btn active" data-calendar-filter="all">All</button>
-          <button class="filter-btn" data-calendar-filter="glow">Glow</button>
-          <button class="filter-btn" data-calendar-filter="work">Work</button>
-          <button class="filter-btn" data-calendar-filter="events">Events</button>
-          <button class="filter-btn" data-calendar-filter="deadlines">Deadlines</button>
+        <!-- Work Categories Dropdown -->
+        <div class="calendar-category-section">
+          <button class="category-dropdown-toggle" data-dropdown="work-categories">
+            <span class="dropdown-arrow">▼</span>
+            <span class="dropdown-label">Work Categories</span>
+          </button>
+          <div class="category-dropdown-content" id="work-categories" hidden>
+            <div class="category-checkboxes">
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="study" data-mode="work" checked />
+                <span class="checkbox-label">Study / Dissertation</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="jobs" data-mode="work" checked />
+                <span class="checkbox-label">Jobs / Applications</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="portfolio" data-mode="work" checked />
+                <span class="checkbox-label">Portfolio</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="creativeWork" data-mode="work" checked />
+                <span class="checkbox-label">Creative Tasks</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="client" data-mode="work" checked />
+                <span class="checkbox-label">Client Work</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="brand" data-mode="work" checked />
+                <span class="checkbox-label">Brand Projects</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="adminWork" data-mode="work" checked />
+                <span class="checkbox-label">Money / Admin</span>
+              </label>
+              <label class="category-checkbox">
+                <input type="checkbox" data-calendar-category="skills" data-mode="work" checked />
+                <span class="checkbox-label">Skill Building</span>
+              </label>
+            </div>
+          </div>
         </div>
-        <div class="filter-section">
-          <button class="filter-btn" data-calendar-filter="rituals">Rituals</button>
-          <button class="filter-btn" data-calendar-filter="habits">Habits</button>
-          <button class="filter-btn" data-calendar-filter="completed">Done</button>
-          <button class="filter-btn" data-calendar-filter="incomplete">Open</button>
+      </aside>
+
+      <!-- Calendar Main Content -->
+      <section class="calendar-main-content">
+        <!-- Calendar Header/Toolbar -->
+        <div class="calendar-header">
+          <div class="calendar-header-left">
+            <button class="calendar-nav-btn" id="calendarPrev" aria-label="Previous period">←</button>
+            <h2 id="calendarPeriodLabel" class="calendar-period-title">June 2026</h2>
+            <button class="calendar-nav-btn" id="calendarNext" aria-label="Next period">→</button>
+            <button class="calendar-today-btn" id="calendarToday">Today</button>
+          </div>
+          <div class="calendar-header-right">
+            <div class="calendar-view-options">
+              <button class="calendar-view-btn active" data-calendar-view="month">Month</button>
+              <button class="calendar-view-btn" data-calendar-view="week">Week</button>
+              <button class="calendar-view-btn" data-calendar-view="day">Day</button>
+            </div>
+            <button class="primary-btn calendar-add-btn" id="calendarAddBtn">+ Add Event</button>
+          </div>
         </div>
-      </div>
 
-      <div id="calendarViewContainer" class="calendar-view-container">
-        <!-- Week/Day/Month views render here -->
-      </div>
-
-      <button class="primary-btn calendar-add-btn" id="calendarAddBtn">+ Add to Calendar</button>
-    </section>
-
-    <div class="calendar-day-panel" id="calendarDayPanel" hidden>
-      <button class="checkin-close" id="calendarDayPanelClose" aria-label="Close day panel">×</button>
-      <h3 id="calendarDayPanelDate">June 16, 2026</h3>
-      <div class="calendar-day-items" id="calendarDayItems"></div>
-      <div class="calendar-day-notes">
-        <label>Plan for this day<textarea id="calendarDayNotesInput" placeholder="What's the intention for today?"></textarea></label>
-        <button class="secondary-btn" id="calendarDayNotesSave">Save day plan</button>
-      </div>
+        <!-- Calendar Grid -->
+        <div id="calendarViewContainer" class="calendar-view-container">
+          <!-- Calendar view renders here -->
+        </div>
+      </section>
     </div>
   </main>
 

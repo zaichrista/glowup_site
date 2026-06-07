@@ -1688,9 +1688,12 @@ let calendarItems = loadCollection(CALENDAR_ITEMS_KEY);
 let calendarScheduleOverrides = loadRecords(CALENDAR_SCHEDULE_OVERRIDES_KEY);
 let calendarItemCompletions = loadRecords(CALENDAR_COMPLETIONS_KEY);
 let calendarDayNotes = loadRecords(CALENDAR_DAY_NOTES_KEY);
-let calendarCurrentView = "week";
+let calendarCurrentView = "month";
 let calendarCurrentDate = new Date();
-let calendarFilter = "all";
+let visibleCategories = {
+  glow: new Set(["body", "waist", "glutes", "posture", "hair", "beauty", "food", "water", "sleep", "soul"]),
+  work: new Set(["study", "jobs", "portfolio", "creativeWork", "client", "brand", "adminWork", "skills"])
+};
 
 function getAllCalendarItems(date = new Date()) {
   const items = [];
@@ -1698,6 +1701,7 @@ function getAllCalendarItems(date = new Date()) {
   
   // Collect glow rituals and habits
   activeHabits().forEach(habit => {
+    if (!visibleCategories.glow.has(habit.category)) return;
     const [start, end] = periodRange(habit, today);
     if (today >= start && today <= end) {
       items.push({
@@ -1720,6 +1724,7 @@ function getAllCalendarItems(date = new Date()) {
 
   // Collect work tasks
   (workTasks || []).forEach(task => {
+    if (!visibleCategories.work.has(task.category)) return;
     const [start, end] = periodRange(task, today);
     if (today >= start && today <= end) {
       items.push({
@@ -1805,34 +1810,73 @@ function getAllCalendarItems(date = new Date()) {
   return items;
 }
 
-function calendarDayItemsForDate(date = new Date()) {
-  const key = dateKey(date);
-  return getAllCalendarItems(date).sort((a, b) => {
-    if (a.time && b.time) return a.time.localeCompare(b.time);
-    if (a.time) return -1;
-    if (b.time) return 1;
-    return 0;
-  });
-}
-
 function renderCalendarView() {
   const container = document.getElementById("calendarViewContainer");
   if (!container) return;
   
-  if (calendarCurrentView === "week") {
+  if (calendarCurrentView === "month") {
+    renderCalendarMonth(container);
+  } else if (calendarCurrentView === "week") {
     renderCalendarWeek(container);
   } else if (calendarCurrentView === "day") {
     renderCalendarDay(container);
-  } else if (calendarCurrentView === "month") {
-    renderCalendarMonth(container);
   }
   updateCalendarPeriodLabel();
 }
 
 function renderCalendarDay(container) {
   const date = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth(), calendarCurrentDate.getDate());
-  const key = dateKey(date);
-  const items = calendarDayItemsForDate(date).filter(filterCalendarItem);
+  const items = getAllCalendarItems(date);
+  const dayName = date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  
+  const timeSlots = {
+    "Morning": [],
+    "Midday": [],
+    "Afternoon": [],
+    "Evening": [],
+    "Night": [],
+    "Anytime": []
+  };
+
+  items.forEach(item => {
+    if (!item.time) {
+      timeSlots["Anytime"].push(item);
+    } else {
+      const hour = parseInt(item.time.split(":")[0]);
+      if (hour < 12) timeSlots["Morning"].push(item);
+      else if (hour < 14) timeSlots["Midday"].push(item);
+      else if (hour < 17) timeSlots["Afternoon"].push(item);
+      else if (hour < 20) timeSlots["Evening"].push(item);
+      else timeSlots["Night"].push(item);
+    }
+  });
+
+  let html = `
+    <div class="calendar-day-view">
+      <div class="calendar-date-header">${dayName}</div>
+  `;
+  
+  Object.entries(timeSlots).forEach(([slot, slotItems]) => {
+    if (slotItems.length === 0) return;
+    html += `
+      <div class="calendar-time-slot">
+        <div class="slot-title">${slot}</div>
+        <div class="slot-items">
+          ${slotItems.map(item => `
+            <div class="calendar-item ${item.mode}" title="${item.title}">
+              ${item.icon} ${item.title}
+              ${item.time ? `<small>${item.time}</small>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  });
+  
+  html += '</div>';
+  container.innerHTML = html;
+  attachCalendarEventListeners();
+}
   
   const timeSlots = {
     "morning": [],
@@ -1890,33 +1934,30 @@ function renderCalendarWeek(container) {
   const start = startOfWeek(calendarCurrentDate);
   const weekDays = Array.from({length: 7}, (_, i) => addDays(start, i));
   
-  const html = `
-    <div class="calendar-week-view">
-      <div class="week-grid">
-        ${weekDays.map(day => {
-          const items = calendarDayItemsForDate(day).filter(filterCalendarItem);
-          return `
-            <div class="calendar-day-column">
-              <div class="day-header">
-                <div class="day-label">${day.toLocaleDateString("en-US", { weekday: "short" })}</div>
-                <div class="day-date">${day.getDate()}</div>
-              </div>
-              <div class="day-items">
-                ${items.map(item => `
-                  <div class="calendar-item ${item.mode} ${item.isCompleted ? "completed" : ""}" data-item-id="${item.id}">
-                    <span class="item-icon">${item.icon}</span>
-                    <span class="item-title">${item.title}</span>
-                    ${item.time ? `<span class="item-time">${item.time}</span>` : ""}
-                  </div>
-                `).join("")}
-              </div>
-            </div>
-          `;
-        }).join("")}
-      </div>
-    </div>
-  `;
+  let html = '<div class="week-grid">';
   
+  weekDays.forEach(day => {
+    const items = getAllCalendarItems(day);
+    const dayName = day.toLocaleDateString("en-US", { weekday: "short" });
+    
+    html += `
+      <div class="calendar-day-column">
+        <div class="day-header">
+          <div class="day-label">${dayName}</div>
+          <div class="day-date">${day.getDate()}</div>
+        </div>
+        <div class="day-items">
+          ${items.map(item => `
+            <div class="calendar-item ${item.mode}" title="${item.title}">
+              ${item.icon} ${item.title}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  });
+  
+  html += '</div>';
   container.innerHTML = html;
   attachCalendarEventListeners();
 }
@@ -1926,170 +1967,86 @@ function renderCalendarMonth(container) {
   const month = calendarCurrentDate.getMonth();
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
-  const daysInMonth = lastDay.getDate();
   const startDate = startOfWeek(firstDay);
   
-  const weeks = [];
+  let html = '<table class="month-grid" style="width: 100%; border-collapse: collapse;">';
+  
+  // Header row with day names
+  html += '<tr>';
+  ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].forEach(day => {
+    html += `<td class="day-header-name">${day.slice(0, 3)}</td>`;
+  });
+  html += '</tr>';
+  
+  // Calendar grid
   let currentDate = new Date(startDate);
-  
-  while (currentDate <= lastDay || weeks[weeks.length - 1].some(d => d.getMonth() === month)) {
-    const week = Array.from({length: 7}, (_, i) => {
-      const d = new Date(currentDate);
-      currentDate.setDate(currentDate.getDate() + 1);
-      return d;
-    });
-    weeks.push(week);
-  }
-
-  const html = `
-    <div class="calendar-month-view">
-      <div class="month-grid">
-        ${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(day => `<div class="day-header-name">${day}</div>`).join("")}
-        ${weeks.map(week => week.map(day => {
-          const isCurrentMonth = day.getMonth() === month;
-          const items = isCurrentMonth ? calendarDayItemsForDate(day).filter(filterCalendarItem) : [];
-          return `
-            <div class="calendar-month-day ${!isCurrentMonth ? "other-month" : ""}" data-date="${dateKey(day)}">
-              <div class="day-number">${day.getDate()}</div>
-              <div class="day-items-preview">
-                ${items.slice(0, 3).map(item => `<div class="item-dot" style="background: var(--calendar-${item.mode}, var(--rose)))" title="${item.title}"></div>`).join("")}
-                ${items.length > 3 ? `<div class="item-more">+${items.length - 3}</div>` : ""}
+  while (currentDate < lastDay || currentDate.getDay() !== 1) {
+    html += '<tr>';
+    for (let i = 0; i < 7; i++) {
+      const isCurrentMonth = currentDate.getMonth() === month;
+      const items = isCurrentMonth ? getAllCalendarItems(currentDate) : [];
+      const dayKey = dateKey(currentDate);
+      
+      html += `
+        <td class="calendar-month-day ${!isCurrentMonth ? 'other-month' : ''}" data-date="${dayKey}">
+          <div class="day-number">${currentDate.getDate()}</div>
+          <div class="day-items-preview">
+            ${items.slice(0, 3).map(item => `
+              <div class="calendar-item ${item.mode}" title="${item.title}">
+                ${item.icon} ${item.title}
               </div>
-            </div>
-          `;
-        }).join("")).join("")}
-      </div>
-    </div>
-  `;
+            `).join('')}
+            ${items.length > 3 ? `<div class="item-more">+${items.length - 3}</div>` : ''}
+          </div>
+        </td>
+      `;
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    html += '</tr>';
+  }
   
+  html += '</table>';
   container.innerHTML = html;
   attachCalendarEventListeners();
-}
-
-function filterCalendarItem(item) {
-  if (calendarFilter === "all") return true;
-  if (calendarFilter === "glow") return item.mode === "glow";
-  if (calendarFilter === "work") return item.mode === "work";
-  if (calendarFilter === "events") return item.type === "event" || item.type === "deadline";
-  if (calendarFilter === "deadlines") return item.type === "deadline";
-  if (calendarFilter === "rituals") return item.type === "ritual";
-  if (calendarFilter === "habits") return item.sourceType === "glow-ritual" || item.sourceType === "work-task";
-  if (calendarFilter === "completed") return item.isCompleted;
-  if (calendarFilter === "incomplete") return !item.isCompleted;
-  return true;
 }
 
 function updateCalendarPeriodLabel() {
   const label = document.getElementById("calendarPeriodLabel");
   if (!label) return;
   
-  if (calendarCurrentView === "week") {
+  if (calendarCurrentView === "month") {
+    label.textContent = calendarCurrentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  } else if (calendarCurrentView === "week") {
     const start = startOfWeek(calendarCurrentDate);
     const end = addDays(start, 6);
     label.textContent = `${start.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${end.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
   } else if (calendarCurrentView === "day") {
     label.textContent = calendarCurrentDate.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  } else if (calendarCurrentView === "month") {
-    label.textContent = calendarCurrentDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   }
 }
 
 function attachCalendarEventListeners() {
   document.querySelectorAll(".calendar-item").forEach(item => {
     item.addEventListener("click", (e) => {
-      if (e.target.classList.contains("item-checkbox")) return;
-      showCalendarItemDetail(item.dataset.itemId);
+      // Could open detail modal here if needed
     });
   });
-
-  document.querySelectorAll(".item-checkbox").forEach(btn => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      toggleCalendarItemCompletion(btn.dataset.toggleCalendarItem);
-    });
-  });
-
+  
   document.querySelectorAll(".calendar-month-day").forEach(day => {
     day.addEventListener("click", () => {
       const date = parseDate(day.dataset.date);
       calendarCurrentDate = date;
       calendarCurrentView = "day";
       renderCalendarView();
-      updateViewButtons();
+      updateCalendarViewButtons();
     });
   });
 }
 
-function toggleCalendarItemCompletion(itemId) {
-  const key = dateKey(calendarCurrentDate);
-  if (!calendarItemCompletions[key]) calendarItemCompletions[key] = {};
-  calendarItemCompletions[key][itemId] = !calendarItemCompletions[key][itemId];
-  saveCollection(CALENDAR_COMPLETIONS_KEY, calendarItemCompletions);
-  renderCalendarView();
-  renderCalendarSummary();
-}
-
-function showCalendarItemDetail(itemId) {
-  const modal = document.getElementById("calendarItemDetailModal");
-  if (!modal) return;
-  
-  // Find the item in all calendar items
-  const allItems = getAllCalendarItems();
-  const item = allItems.find(i => i.id === itemId);
-  
-  if (!item) return;
-  
-  const body = document.getElementById("calendarItemDetailBody");
-  const actions = document.getElementById("calendarItemDetailActions");
-  
-  let html = `<h3 id="calendarItemDetailTitle">${item.title}</h3>`;
-  html += `<p class="section-label">${item.type} • ${item.mode}</p>`;
-  
-  if (item.description) html += `<p>${item.description}</p>`;
-  if (item.countdown !== undefined) html += `<p class="countdown">${item.countdown} days away</p>`;
-  if (item.notes) html += `<p class="item-notes">${item.notes}</p>`;
-  
-  body.innerHTML = html;
-  
-  let actionsHtml = `
-    <button class="secondary-btn" data-toggle-calendar-item-detail="${itemId}">
-      ${item.isCompleted ? "Mark incomplete" : "Mark complete"}
-    </button>
-  `;
-  
-  if (item.sourceType === "glow-ritual" || item.sourceType === "work-task") {
-    actionsHtml += `<button class="text-button" onclick="document.location.hash = '#' + this.dataset.source">Open in ${item.mode === 'glow' ? 'Glow' : 'Work'} Mode</button>`;
-  }
-  
-  actionsHtml += `<button class="danger-btn" data-delete-calendar-item="${itemId}">Delete</button>`;
-  
-  actions.innerHTML = actionsHtml;
-  modal.hidden = false;
-}
-
-function renderCalendarSummary() {
-  const today = new Date();
-  const todayItems = calendarDayItemsForDate(today).filter(filterCalendarItem);
-  const thisWeekStart = startOfWeek(today);
-  const thisWeekItems = [];
-  
-  for (let i = 0; i < 7; i++) {
-    const day = addDays(thisWeekStart, i);
-    thisWeekItems.push(...calendarDayItemsForDate(day).filter(filterCalendarItem));
-  }
-  
-  const completedToday = todayItems.filter(item => item.isCompleted).length;
-  
-  document.getElementById("todaySummaryCount").textContent = `${todayItems.length} items`;
-  document.getElementById("todaySummaryText").textContent = todayItems.length > 0 ? `${completedToday} completed` : "Nothing scheduled.";
-  
-  const weekDeadlines = thisWeekItems.filter(item => item.type === "deadline" || item.type === "event").length;
-  document.getElementById("weekSummaryCount").textContent = `${weekDeadlines} deadlines`;
-  document.getElementById("weekSummaryText").textContent = weekDeadlines > 0 ? "Plan ahead." : "Clear week.";
-  
-  const completedCount = todayItems.filter(item => item.isCompleted).length;
-  document.getElementById("completedTodayCount").textContent = `${completedCount} / ${todayItems.length}`;
-  document.getElementById("completedTodayText").textContent = completedCount === todayItems.length ? "Great work!" : "Keep going.";
+function updateCalendarViewButtons() {
+  document.querySelectorAll(".calendar-view-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.calendarView === calendarCurrentView);
+  });
 }
 
 function initializeCalendarMode() {
@@ -2101,64 +2058,72 @@ function initializeCalendarMode() {
     });
   });
 
-  // Return to glow mode from calendar
-  document.querySelector(".glow-nav")?.querySelectorAll("a").forEach(link => {
-    const originalListener = link.onclick;
-    link.addEventListener("click", (e) => {
-      if (document.getElementById("calendarMode").hidden === false) {
-        // Currently in calendar, switch back to glow mode
-        document.getElementById("calendarMode").hidden = true;
-        document.getElementById("glowMode").hidden = false;
-        currentMode = "glow";
-      }
+  // Category dropdown toggles
+  document.querySelectorAll(".category-dropdown-toggle").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const dropdownId = btn.dataset.dropdown;
+      const content = document.getElementById(dropdownId);
+      const isOpen = !content.hidden;
+      content.hidden = !content.hidden;
+      btn.dataset.open = !isOpen;
     });
   });
 
-  // Work mode navigation handled by existing mode switcher
+  // Category checkboxes
+  document.querySelectorAll('input[data-calendar-category]').forEach(checkbox => {
+    checkbox.addEventListener("change", () => {
+      const category = checkbox.dataset.calendarCategory;
+      const mode = checkbox.dataset.mode;
+      
+      if (checkbox.checked) {
+        visibleCategories[mode].add(category);
+      } else {
+        visibleCategories[mode].delete(category);
+      }
+      
+      renderCalendarView();
+    });
+  });
+
   // View switcher
   document.querySelectorAll(".calendar-view-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       calendarCurrentView = btn.dataset.calendarView;
-      document.querySelectorAll(".calendar-view-btn").forEach(b => b.classList.toggle("active", b === btn));
       renderCalendarView();
+      updateCalendarViewButtons();
     });
   });
 
   // Navigation
   document.getElementById("calendarPrev")?.addEventListener("click", () => {
-    if (calendarCurrentView === "week") {
+    if (calendarCurrentView === "month") {
+      calendarCurrentDate = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth() - 1, 1);
+    } else if (calendarCurrentView === "week") {
       calendarCurrentDate = addDays(calendarCurrentDate, -7);
     } else if (calendarCurrentView === "day") {
       calendarCurrentDate = addDays(calendarCurrentDate, -1);
-    } else if (calendarCurrentView === "month") {
-      calendarCurrentDate = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth() - 1, 1);
     }
     renderCalendarView();
   });
 
   document.getElementById("calendarNext")?.addEventListener("click", () => {
-    if (calendarCurrentView === "week") {
+    if (calendarCurrentView === "month") {
+      calendarCurrentDate = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth() + 1, 1);
+    } else if (calendarCurrentView === "week") {
       calendarCurrentDate = addDays(calendarCurrentDate, 7);
     } else if (calendarCurrentView === "day") {
       calendarCurrentDate = addDays(calendarCurrentDate, 1);
-    } else if (calendarCurrentView === "month") {
-      calendarCurrentDate = new Date(calendarCurrentDate.getFullYear(), calendarCurrentDate.getMonth() + 1, 1);
     }
     renderCalendarView();
   });
 
   document.getElementById("calendarToday")?.addEventListener("click", () => {
     calendarCurrentDate = new Date();
+    if (calendarCurrentView !== "month") {
+      calendarCurrentView = "month";
+      updateCalendarViewButtons();
+    }
     renderCalendarView();
-  });
-
-  // Filters
-  document.querySelectorAll(".filter-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      calendarFilter = btn.dataset.calendarFilter;
-      document.querySelectorAll(".filter-btn").forEach(b => b.classList.toggle("active", b === btn));
-      renderCalendarView();
-    });
   });
 
   // Add button
@@ -2166,15 +2131,6 @@ function initializeCalendarMode() {
     document.getElementById("calendarItemEditorModal").hidden = false;
     document.getElementById("calendarItemEditorForm").reset();
     document.getElementById("calendarItemEditorId").value = "";
-  });
-
-  // Modal close
-  document.getElementById("calendarItemEditorClose")?.addEventListener("click", () => {
-    document.getElementById("calendarItemEditorModal").hidden = true;
-  });
-
-  document.getElementById("calendarItemDetailClose")?.addEventListener("click", () => {
-    document.getElementById("calendarItemDetailModal").hidden = true;
   });
 
   // Form submission
@@ -2205,17 +2161,10 @@ function initializeCalendarMode() {
     saveCollection(CALENDAR_ITEMS_KEY, calendarItems);
     document.getElementById("calendarItemEditorModal").hidden = true;
     renderCalendarView();
-    renderCalendarSummary();
   });
 
   renderCalendarView();
-  renderCalendarSummary();
-}
-
-function updateViewButtons() {
-  document.querySelectorAll(".calendar-view-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.calendarView === calendarCurrentView);
-  });
+  updateCalendarViewButtons();
 }
 
 function showCalendarMode() {
@@ -2226,7 +2175,6 @@ function showCalendarMode() {
   document.querySelector(".work-nav").hidden = true;
   forcePageTop();
   renderCalendarView();
-  renderCalendarSummary();
 }
 
 function returnToMode() {
