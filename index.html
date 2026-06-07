@@ -29,6 +29,7 @@
       <a href="#home" data-cursor="track">Today</a>
       <a href="#tracker" data-cursor="track">Tracker</a>
       <a href="#rituals" data-cursor="build">Rituals</a>
+      <a href="#events" data-cursor="reveal">Events</a>
       <a href="#review" data-cursor="review">Review</a>
       <a href="#measurements" data-cursor="log">Measures</a>
       <a href="#reset" data-cursor="careful">Reset</a>
@@ -76,7 +77,13 @@
 
     <section id="today" class="dashboard section swiss-current">
       <div class="section-head">
-        <p class="section-label">Today</p>
+        <div>
+          <p class="section-label">Today</p>
+          <div class="time-atmosphere">
+            <span id="timeAtmosphereLabel">Morning ritual</span>
+            <small id="timeAtmosphereCopy">Palette synced to your day.</small>
+          </div>
+        </div>
         <h2>The command summary.</h2>
       </div>
       <div class="command-summary" id="commandSummary"></div>
@@ -118,7 +125,10 @@
           <p class="section-label">Life command dashboard</p>
           <h2>Today’s rituals.</h2>
         </div>
-        <p class="ritual-board-note" id="ritualBoardNote">Due today, darling.</p>
+        <div class="ritual-head-actions">
+          <p class="ritual-board-note" id="ritualBoardNote">Due today, darling.</p>
+          <button class="secondary-btn" id="openRitualCreator" type="button">Add a Ritual</button>
+        </div>
       </div>
       <div class="habit-filters" id="habitFilters" aria-label="Habit filters">
         <button class="habit-filter active" data-filter="today">Today</button>
@@ -131,6 +141,24 @@
         <button class="habit-filter" data-filter="missed">Missed</button>
       </div>
       <div class="life-category-board" id="habitBoard"></div>
+    </section>
+
+    <section id="events" class="events-atelier section">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Glow-Up Events</p>
+          <h2>D-Day Atelier.</h2>
+          <p class="atelier-subtitle">Every event deserves a preparation ritual.</p>
+        </div>
+        <button class="primary-btn" id="openEventCreator" type="button">Create a D-Day</button>
+      </div>
+      <div class="next-dday" id="nextDdayCard"></div>
+      <div class="event-tabs">
+        <button class="event-tab active" data-event-view="active">Active Events</button>
+        <button class="event-tab" data-event-view="archived">The Glow-Up Archive</button>
+      </div>
+      <div class="event-grid" id="eventGrid"></div>
+      <div class="event-detail" id="eventDetail" hidden></div>
     </section>
 
     <section id="tracker" class="tracker section">
@@ -210,6 +238,71 @@
       <h2 id="levelModalTitle">The Ritualist</h2>
       <p id="levelModalCopy">Your standards just got prettier.</p>
     </div>
+  </div>
+  <div class="atelier-modal" id="eventEditorModal" hidden role="dialog" aria-modal="true" aria-labelledby="eventEditorTitle">
+    <form class="atelier-form" id="eventEditorForm">
+      <button class="checkin-close" type="button" data-close-atelier="eventEditorModal">×</button>
+      <p class="section-label">Couture preparation folder</p>
+      <h2 id="eventEditorTitle">Create a D-Day.</h2>
+      <input type="hidden" id="eventEditorId" name="eventId" />
+      <div class="atelier-fields">
+        <label>Event name<input name="name" required /></label>
+        <label>Event date<input name="date" type="date" required /></label>
+        <label>Category<select name="category"><option>Dress fitting</option><option>Holiday</option><option>Date / reunion</option><option>Birthday</option><option>Photoshoot</option><option>Wedding / party</option><option>Performance</option><option>Career moment</option><option>Personal reset</option><option>Custom</option></select></label>
+        <label>Desired feeling<input name="desiredFeeling" /></label>
+        <label class="atelier-wide">Goal / reason<textarea name="goal" required></textarea></label>
+        <label class="atelier-wide">Motivation note<textarea name="motivation" required></textarea></label>
+        <label>Dress / outfit notes<textarea name="outfitNotes"></textarea></label>
+        <label>Body goal notes<textarea name="bodyNotes"></textarea></label>
+        <label>Beauty goal notes<textarea name="beautyNotes"></textarea></label>
+        <label>Confidence goal notes<textarea name="confidenceNotes"></textarea></label>
+        <label class="atelier-wide">Private notes<textarea name="privateNotes"></textarea></label>
+      </div>
+      <div class="event-ritual-picker">
+        <div class="event-picker-head"><h3>Select event rituals</h3><p>Importance shapes the readiness score.</p></div>
+        <div id="eventRitualPicker"></div>
+      </div>
+      <button class="primary-btn" type="submit">Save D-Day</button>
+    </form>
+  </div>
+
+  <div class="atelier-modal" id="ritualEditorModal" hidden role="dialog" aria-modal="true" aria-labelledby="ritualEditorTitle">
+    <form class="atelier-form atelier-form--ritual" id="ritualEditorForm">
+      <button class="checkin-close" type="button" data-close-atelier="ritualEditorModal">×</button>
+      <p class="section-label">Life-command addition</p>
+      <h2 id="ritualEditorTitle">Add a Ritual.</h2>
+      <input type="hidden" name="ritualId" />
+      <div class="atelier-fields">
+        <label class="atelier-wide">Ritual title<input name="title" required /></label>
+        <label>Category<select name="category" id="customRitualCategory"></select></label>
+        <label>Frequency<select name="frequency"><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">Biweekly</option><option value="monthly">Monthly</option><option value="one-time">One-time</option><option value="custom">Custom</option></select></label>
+        <label>Importance<select name="importance"><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select></label>
+        <label>Target count per period<input name="targetCount" type="number" min="1" value="1" /></label>
+        <label>Start date<input name="startDate" type="date" /></label>
+        <label>End date<input name="endDate" type="date" /></label>
+        <label>Linked event<select name="linkedEvent"><option value="">None</option></select></label>
+        <label class="atelier-wide">Why it matters<textarea name="why"></textarea></label>
+        <label class="atelier-wide">Notes<textarea name="notes"></textarea></label>
+      </div>
+      <div class="ritual-recommendation" id="ritualRecommendation">Type a ritual title and the atelier will make a recommendation.</div>
+      <button class="primary-btn" type="submit">Save Ritual</button>
+    </form>
+  </div>
+
+  <div class="atelier-modal" id="eventArchiveModal" hidden role="dialog" aria-modal="true" aria-labelledby="eventArchiveTitle">
+    <form class="atelier-form atelier-form--ritual" id="eventArchiveForm">
+      <button class="checkin-close" type="button" data-close-atelier="eventArchiveModal">×</button>
+      <p class="section-label">Post-event reflection</p>
+      <h2 id="eventArchiveTitle">Archive the reveal.</h2>
+      <input type="hidden" name="eventId" />
+      <div class="atelier-fields">
+        <label class="atelier-wide">How did I feel?<textarea name="felt" required></textarea></label>
+        <label class="atelier-wide">What worked?<textarea name="worked" required></textarea></label>
+        <label class="atelier-wide">What would I repeat?<textarea name="repeat" required></textarea></label>
+        <label class="atelier-wide">What did I learn?<textarea name="learned" required></textarea></label>
+      </div>
+      <button class="primary-btn" type="submit">Archive Event</button>
+    </form>
   </div>
   <div class="checkin-modal morning-checkin" id="morningCheckinModal" hidden aria-modal="true" role="dialog" aria-labelledby="morningCheckinTitle">
     <form class="checkin-card checkin-card--morning" id="morningCheckinForm">

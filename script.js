@@ -20,7 +20,37 @@ const STORAGE_KEY = "zaiGlowUpDashboard.v1";
 const CHECKIN_KEY = "glowCheckins";
 const HABIT_UPDATE_KEY = "glowHabitUpdates";
 const EVENING_KEY = "glowEveningReflections";
+const EVENTS_KEY = "glowEvents";
+const CUSTOM_RITUALS_KEY = "glowCustomRituals";
 const TODAY_KEY = dateKey(new Date());
+const TIME_CLASSES = ["time-dawn", "time-morning", "time-midday", "time-afternoon", "time-sunset", "time-evening", "time-night"];
+
+function applyTimeTheme() {
+  const now = new Date();
+  const hour = now.getHours() + now.getMinutes() / 60;
+  let theme = "night";
+  if (hour >= 5 && hour < 7) theme = "dawn";
+  else if (hour >= 7 && hour < 11) theme = "morning";
+  else if (hour >= 11 && hour < 14) theme = "midday";
+  else if (hour >= 14 && hour < 17) theme = "afternoon";
+  else if (hour >= 17 && hour < 20) theme = "sunset";
+  else if (hour >= 20 && hour < 22) theme = "evening";
+  document.body.classList.remove(...TIME_CLASSES);
+  document.body.classList.add(`time-${theme}`);
+  const atmosphere = {
+    dawn: ["Dawn archive", "The archive is waking in blush light."],
+    morning: ["Morning ritual", "The archive is in morning light."],
+    midday: ["Midday discipline", "Midday discipline mode."],
+    afternoon: ["Afternoon polish", "The palette follows the steady sky."],
+    sunset: ["Sunset glow", "Sunset glow unlocked."],
+    evening: ["Evening reflection", "Rose-mauve light for graceful discipline."],
+    night: ["Night archive", "Night archive: softer, quieter, sharper."]
+  }[theme];
+  const label = document.getElementById("timeAtmosphereLabel");
+  const copy = document.getElementById("timeAtmosphereCopy");
+  if (label) label.textContent = atmosphere[0];
+  if (copy) copy.textContent = `${atmosphere[1]} Palette synced to your day.`;
+}
 
 const categoryMeta = {
   body: { label: "Body", icon: "✦", group: "Body" },
@@ -36,10 +66,11 @@ const categoryMeta = {
   creativity: { label: "Creativity", icon: "✎", group: "Soul" },
   social: { label: "Relationship / Social", icon: "♡", group: "Social" },
   money: { label: "Money / Admin", icon: "₊", group: "Work" },
-  soul: { label: "Soul / God / Mind", icon: "✦", group: "Soul" }
+  soul: { label: "Soul / God / Mind", icon: "✦", group: "Soul" },
+  custom: { label: "Custom", icon: "✧", group: "Life" }
 };
 
-const habits = [
+let habits = [
   ritual("nutrition-0", "Protein first", "food", "daily", "Hit 100–120g protein to keep curves while revealing the waist.", "Protects muscle and supports the waist goal without crash dieting."),
   ritual("nutrition-1", "2.5L water", "water", "daily", "Hydrate before the day gets dramatic.", "Supports energy, digestion, skin, and recovery."),
   ritual("nutrition-2", "No chaotic grazing", "food", "daily", "Three solid meals and one controlled protein snack.", "Keeps energy steady and decisions intentional."),
@@ -88,6 +119,10 @@ const habits = [
   ritual("fieldwork-tracker", "Create dissertation fieldwork tracker", "career", "one-time", "Give the project one reliable command centre.", "Complex work needs a visible system."),
   ritual("dress-countdown", "Dress fitting countdown", "beauty", "custom", "Review the fitting plan every ten days.", "A custom cycle keeps the event calm and considered.", 10)
 ];
+
+let customRituals = loadCollection(CUSTOM_RITUALS_KEY);
+let events = loadCollection(EVENTS_KEY);
+habits.push(...customRituals.filter(item => !item.deleted).map(item => ({ ...item, custom: true, description: item.notes || item.why || "A ritual designed for your life." })));
 
 const levels = [
   level(1, "The Initiate", 0, 7, "more rose accents"),
@@ -143,6 +178,8 @@ let trackerView = "week";
 let trackerDate = new Date();
 let habitFilter = "today";
 let chartMode = "today";
+let eventView = "active";
+let selectedEventId = null;
 
 function dateKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -221,6 +258,55 @@ function saveState() {
 function loadRecords(key) {
   try { return JSON.parse(localStorage.getItem(key) || "{}"); }
   catch { return {}; }
+}
+function loadCollection(key) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch { return []; }
+}
+function saveCollection(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+function activeHabits() {
+  const today = parseDate(TODAY_KEY);
+  return habits.filter(habit => !habit.paused && (!habit.startDate || parseDate(habit.startDate) <= today) && (!habit.endDate || parseDate(habit.endDate) >= today));
+}
+function eventById(id) { return events.find(event => event.id === id); }
+function linkedEventsForRitual(id) { return events.filter(event => event.status !== "archived" && event.ritualLinks?.some(link => link.ritualId === id)); }
+function daysUntil(date) { return Math.ceil((parseDate(date) - parseDate(TODAY_KEY)) / 86400000); }
+function eventTiming(event) {
+  const days = daysUntil(event.date);
+  if (days < 0) return { days, state: "past", copy: "This event has passed. Archive it or keep reflecting." };
+  if (days === 0) return { days, state: "today", copy: "D-day has arrived." };
+  if (days <= 2) return { days, state: "imminent", copy: days === 1 ? "Tomorrow is the reveal." : `${days} days until the reveal.` };
+  if (days <= 6) return { days, state: "near", copy: `${days} days until the reveal. Final polish window.` };
+  if (days <= 13) return { days, state: "rose", copy: `${days} days until the reveal.` };
+  return { days, state: days <= 30 ? "blush" : "calm", copy: `${days} days until the reveal.` };
+}
+function importanceWeight(value) { return { Low: 1, Medium: 2, High: 3, Critical: 5 }[value] || 2; }
+function eventReadiness(event) {
+  const links = event.ritualLinks || [];
+  const total = links.reduce((sum, link) => sum + importanceWeight(link.importance), 0);
+  const completed = links.reduce((sum, link) => {
+    const habit = habits.find(item => item.id === link.ritualId);
+    return sum + (habit && isComplete(habit) ? importanceWeight(link.importance) : 0);
+  }, 0);
+  return total ? Math.round(completed / total * 100) : 0;
+}
+function readinessLabel(score) {
+  if (score <= 30) return "The ritual has begun.";
+  if (score <= 55) return "Momentum building.";
+  if (score <= 75) return "Visible progress era.";
+  if (score <= 90) return "D-day discipline.";
+  return "Ready, glowing, archived.";
+}
+function eventMotivation(category) {
+  return {
+    "Dress fitting": "Every ritual is tailoring the silhouette.",
+    "Date / reunion": "Become calm enough to enjoy being seen.",
+    Holiday: "Build the body that carries you through the sun.",
+    "Career moment": "Polish is preparation made visible.",
+    "Personal reset": "The event is not outside you. You are the event."
+  }[category] || "Preparation is becoming visible.";
 }
 function saveRecord(key, record) {
   const records = loadRecords(key);
@@ -305,7 +391,7 @@ function monthStats() {
 function renderHabitBoard() {
   const board = document.getElementById("habitBoard");
   if (!board) return;
-  const visible = habits.filter(habit => {
+  const visible = activeHabits().filter(habit => {
     const done = isComplete(habit);
     const status = dueStatus(habit);
     if (habitFilter === "today") return habit.frequency === "daily" || !done;
@@ -326,17 +412,24 @@ function renderHabitBoard() {
     event.stopPropagation();
     toggleHabit(button.dataset.habitId);
   }));
+  board.querySelectorAll("[data-open-event]").forEach(button => button.addEventListener("click", () => openEventDetail(button.dataset.openEvent)));
+  board.querySelectorAll("[data-edit-ritual]").forEach(button => button.addEventListener("click", () => openRitualEditor(button.dataset.editRitual)));
+  board.querySelectorAll("[data-pause-ritual]").forEach(button => button.addEventListener("click", () => toggleCustomRitualPause(button.dataset.pauseRitual)));
+  board.querySelectorAll("[data-delete-ritual]").forEach(button => button.addEventListener("click", () => deleteCustomRitual(button.dataset.deleteRitual)));
   bindCursorLabels();
 }
 function renderHabitCard(habit) {
   const done = isComplete(habit);
   const status = dueStatus(habit);
   const meta = categoryMeta[habit.category];
+  const linked = linkedEventsForRitual(habit.id);
   return `<article class="command-habit ${done ? "done" : ""} status-${status.key}">
     <div class="command-habit-top"><span class="frequency-badge frequency-${habit.frequency}">${frequencyLabel(habit.frequency)}</span><span class="due-status">${status.label}</span></div>
     <div class="command-habit-title"><span>${meta.icon}</span><div><p>${meta.label}</p><h4>${habit.title}</h4></div></div>
     <p class="command-habit-copy">${habit.description}</p>
+    ${linked.length ? `<div class="event-tags">${linked.map(event => `<button data-open-event="${event.id}" type="button">Linked to: ${event.name}</button>`).join("")}</div>` : ""}
     <details><summary>Why it matters</summary><p>${habit.why}</p></details>
+    ${habit.custom ? `<div class="custom-ritual-actions"><button data-edit-ritual="${habit.id}" type="button">Edit</button><button data-pause-ritual="${habit.id}" type="button">${habit.paused ? "Resume" : "Pause"}</button><button data-delete-ritual="${habit.id}" type="button">Delete</button></div>` : ""}
     <button class="ritual-check" data-habit-id="${habit.id}" data-cursor="ritual">${done ? "✓ Already handled" : "Complete ritual"}</button>
   </article>`;
 }
@@ -821,6 +914,8 @@ if (currentSection) observer.observe(currentSection);
 renderAll();
 renderMeasurements();
 initialiseCheckinForms();
+applyTimeTheme();
+setInterval(applyTimeTheme, 5 * 60 * 1000);
 bindCursorLabels();
 saveState();
 forcePageTop();
