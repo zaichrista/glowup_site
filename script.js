@@ -31,6 +31,7 @@ const CALENDAR_ITEMS_KEY = "calendarItems";
 const CALENDAR_SCHEDULE_OVERRIDES_KEY = "calendarScheduleOverrides";
 const CALENDAR_COMPLETIONS_KEY = "calendarItemCompletions";
 const CALENDAR_DAY_NOTES_KEY = "calendarDayNotes";
+const PROFILE_CACHE_KEY = "glowProfileCache";
 const SUPABASE_URL = "https://xoxmhnhfmkgzaxqxiavo.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_uGE3D8WW69Kma90w8qJoSw_iC9soT99";
 const CLOUD_LAST_REMOTE_KEY = "glowCloudLastRemoteAt";
@@ -45,7 +46,8 @@ const CLOUD_SYNC_KEYS = [
   STORAGE_KEY, CHECKIN_KEY, HABIT_UPDATE_KEY, EVENING_KEY, EVENTS_KEY,
   CUSTOM_RITUALS_KEY, RITUAL_OVERRIDES_KEY, WORK_STATE_KEY, WORK_TASKS_KEY,
   WORK_EVENTS_KEY, MODE_MIGRATION_KEY, CALENDAR_ITEMS_KEY,
-  CALENDAR_SCHEDULE_OVERRIDES_KEY, CALENDAR_COMPLETIONS_KEY, CALENDAR_DAY_NOTES_KEY
+  CALENDAR_SCHEDULE_OVERRIDES_KEY, CALENDAR_COMPLETIONS_KEY, CALENDAR_DAY_NOTES_KEY,
+  PROFILE_CACHE_KEY
 ];
 const TODAY_KEY = dateKey(new Date());
 const TIME_CLASSES = ["time-dawn", "time-morning", "time-midday", "time-afternoon", "time-sunset", "time-evening", "time-night"];
@@ -102,10 +104,11 @@ function normalizedLocalRows() {
     habitUpdates: loadRecords(HABIT_UPDATE_KEY),
     modeMigration: localStorage.getItem(MODE_MIGRATION_KEY),
     calendarScheduleOverrides: loadRecords(CALENDAR_SCHEDULE_OVERRIDES_KEY),
-    calendarItemCompletions: loadRecords(CALENDAR_COMPLETIONS_KEY)
+    calendarItemCompletions: loadRecords(CALENDAR_COMPLETIONS_KEY),
+    account: loadRecords(PROFILE_CACHE_KEY)
   };
   return {
-    profiles: [{ user_id: cloudUser.id, username: localStorage.getItem(CLOUD_USERNAME_KEY) || cloudUser.user_metadata?.username || "", payload: profilePayload, updated_at: new Date().toISOString() }],
+    profiles: [{ user_id: cloudUser.id, username: profilePayload.account?.username || localStorage.getItem(CLOUD_USERNAME_KEY) || cloudUser.user_metadata?.username || "", payload: profilePayload, updated_at: new Date().toISOString() }],
     glow_completions: glowCompletions,
     glow_checkins: Object.entries(loadRecords(CHECKIN_KEY)).map(([date, payload]) => rowPayload(date, payload, { date_key: date })),
     evening_reflections: Object.entries(loadRecords(EVENING_KEY)).map(([date, payload]) => rowPayload(date, payload, { date_key: date })),
@@ -121,6 +124,8 @@ function normalizedLocalRows() {
 }
 function applyNormalizedCloudRows(rows = {}) {
   const profile = rows.profiles?.[0]?.payload || {};
+  const profileAccount = { ...(profile.account || {}) };
+  if (!profileAccount.username && rows.profiles?.[0]?.username) profileAccount.username = rows.profiles[0].username;
   const glowState = { ...defaultState(), ...(profile.glowState || {}), days: {}, measurements: (rows.measurements || []).map(row => row.payload) };
   (rows.glow_completions || []).forEach(row => {
     glowState.days[row.date_key] ||= { checked: {}, saved: !!row.payload?.saved };
@@ -147,6 +152,7 @@ function applyNormalizedCloudRows(rows = {}) {
   put(HABIT_UPDATE_KEY, profile.habitUpdates || {});
   put(CALENDAR_SCHEDULE_OVERRIDES_KEY, profile.calendarScheduleOverrides || {});
   put(CALENDAR_COMPLETIONS_KEY, profile.calendarItemCompletions || {});
+  put(PROFILE_CACHE_KEY, profileAccount);
   if (profile.modeMigration) nativeStorageSetItem.call(localStorage, MODE_MIGRATION_KEY, profile.modeMigration);
   cloudApplying = false;
 }
@@ -214,6 +220,7 @@ function refreshRuntimeFromStorage() {
   renderMeasurements();
   renderCalendarView();
   renderDailyArchive();
+  renderAccount();
 }
 function showAuthGate() {
   document.getElementById("authGate").hidden = false;
@@ -1878,10 +1885,101 @@ function clearModePieces(pieces) {
     piece.style.removeProperty("--float-scale");
   });
 }
+function accountProfile() {
+  const cached = loadRecords(PROFILE_CACHE_KEY);
+  return {
+    username: cached.username || localStorage.getItem(CLOUD_USERNAME_KEY) || cloudUser?.user_metadata?.username || "Princess",
+    photo: cached.photo || "",
+    createdAt: cached.createdAt || cloudUser?.created_at || new Date().toISOString()
+  };
+}
+function saveAccountProfile(profile) {
+  localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+  renderAccount();
+}
+function renderAccount() {
+  const profile = accountProfile();
+  const image = document.getElementById("accountProfileImage");
+  const initial = document.getElementById("accountProfileInitial");
+  if (!image || !initial) return;
+  image.hidden = !profile.photo;
+  image.src = profile.photo || "";
+  initial.hidden = !!profile.photo;
+  initial.textContent = (profile.username || "P").trim().charAt(0).toUpperCase();
+  document.getElementById("accountDisplayName").textContent = profile.username;
+  document.getElementById("accountUsername").value = profile.username;
+  document.getElementById("accountLoginName").textContent = localStorage.getItem(CLOUD_USERNAME_KEY) || "Private";
+  document.getElementById("accountSyncStatus").textContent = cloudUser ? "Connected" : "Offline cache";
+  document.getElementById("accountGlowCount").textContent = state.totalTicks || 0;
+  document.getElementById("accountWorkCount").textContent = workState.totalTicks || 0;
+  document.getElementById("accountMemberSince").textContent = `Archive member since ${new Date(profile.createdAt).toLocaleDateString("en-GB", { month: "long", year: "numeric" })}`;
+}
+function compressProfileImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("The portrait could not be read."));
+    reader.onload = () => {
+      const image = new Image();
+      image.onerror = () => reject(new Error("The portrait format is not supported."));
+      image.onload = () => {
+        const size = 420;
+        const scale = Math.max(size / image.width, size / image.height);
+        const width = image.width * scale;
+        const height = image.height * scale;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        canvas.getContext("2d").drawImage(image, (size - width) / 2, (size - height) / 2, width, height);
+        resolve(canvas.toDataURL("image/jpeg", .82));
+      };
+      image.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function initialiseAccountMode() {
+  const form = document.getElementById("accountSettingsForm");
+  const photoInput = document.getElementById("accountPhotoInput");
+  if (!form || !photoInput) return;
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    const profile = accountProfile();
+    profile.username = form.elements.username.value.trim() || profile.username;
+    profile.createdAt ||= new Date().toISOString();
+    saveAccountProfile(profile);
+    showToast("Princess profile saved. The archive knows its owner.");
+  });
+  photoInput.addEventListener("change", async () => {
+    const file = photoInput.files?.[0];
+    if (!file) return;
+    if (file.size > 12 * 1024 * 1024) {
+      showToast("Choose a portrait under 12 MB, darling.");
+      photoInput.value = "";
+      return;
+    }
+    try {
+      const profile = accountProfile();
+      profile.photo = await compressProfileImage(file);
+      saveAccountProfile(profile);
+      showToast("Portrait polished and privately synced.");
+    } catch (error) {
+      showToast(error.message);
+    }
+  });
+  document.getElementById("accountRemovePhoto").addEventListener("click", () => {
+    const profile = accountProfile();
+    profile.photo = "";
+    saveAccountProfile(profile);
+    photoInput.value = "";
+    showToast("Portrait removed. Mystery restored.");
+  });
+  document.getElementById("accountSignOutBtn").addEventListener("click", signOutOfPrivateArchive);
+  renderAccount();
+}
 function switchMode(mode) {
   if (mode === currentMode || document.body.classList.contains("mode-transitioning")) return;
   const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const pages = { glow: "glowMode", work: "workMode", calendar: "calendarMode" };
+  const pages = { glow: "glowMode", work: "workMode", calendar: "calendarMode", account: "accountMode" };
   const outgoing = document.getElementById(pages[currentMode]);
   const incoming = document.getElementById(pages[mode]);
   const leavingPieces = reduced ? [] : prepareModePieces(outgoing, "mode-piece--leaving");
@@ -1892,14 +1990,16 @@ function switchMode(mode) {
       document.body.classList.toggle("mode-glow", mode === "glow");
       document.body.classList.toggle("mode-work", mode === "work");
       document.body.classList.toggle("mode-calendar", mode === "calendar");
+      document.body.classList.toggle("mode-account", mode === "account");
       Object.entries(pages).forEach(([key, id]) => document.getElementById(id).hidden = key !== mode);
       document.querySelector(".glow-nav").hidden = mode !== "glow";
       document.querySelector(".work-nav").hidden = mode !== "work";
       document.querySelectorAll(".mode-switch").forEach(button => button.classList.toggle("active", button.dataset.mode === mode));
-      document.querySelector(".brand em").textContent = mode === "glow" ? "Glow-Up" : mode === "work" ? "Work Atelier" : "Archive Calendar";
-      document.getElementById("streakHeader").textContent = mode === "glow" ? `Streak ${state.streak || 0}` : mode === "work" ? `Work ${workState.totalTicks} filed` : "Whole life view";
+      document.querySelector(".brand em").textContent = mode === "glow" ? "Glow-Up" : mode === "work" ? "Work Atelier" : mode === "calendar" ? "Archive Calendar" : "Princess Profile";
+      document.getElementById("streakHeader").textContent = mode === "glow" ? `Streak ${state.streak || 0}` : mode === "work" ? `Work ${workState.totalTicks} filed` : mode === "calendar" ? "Whole life view" : "Private profile";
       if (mode === "work") renderWorkAll();
       else if (mode === "calendar") renderCalendarView();
+      else if (mode === "account") renderAccount();
       else renderAll();
       forcePageTop();
       clearModePieces(leavingPieces);
@@ -1912,7 +2012,7 @@ function switchMode(mode) {
         incoming.classList.remove("mode-page--assembled");
       }, reduced ? 10 : 1150);
     } finally {
-      setTimeout(() => document.body.classList.remove("mode-transitioning", "mode-reconstructing", "transition-to-work", "transition-to-glow"), reduced ? 30 : 1250);
+      setTimeout(() => document.body.classList.remove("mode-transitioning", "mode-reconstructing", "transition-to-work", "transition-to-glow", "transition-to-calendar", "transition-to-account"), reduced ? 30 : 1250);
     }
   }, reduced ? 20 : 720);
 }
@@ -2898,6 +2998,11 @@ try {
   initializeCalendarMode();
 } catch (error) {
   console.error("Calendar startup error:", error);
+}
+try {
+  initialiseAccountMode();
+} catch (error) {
+  console.error("Account startup error:", error);
 }
 try {
   migrateToTwoModes();

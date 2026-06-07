@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Zai Glow-Up Command Centre</title>
   <meta name="description" content="An interactive daily glow-up dashboard for Zai: fitness, nutrition, posture, hair and life progress tracking." />
-  <link rel="stylesheet" href="style.css?v=20260607-night-blue-3" />
+  <link rel="stylesheet" href="style.css?v=20260607-account-4" />
 </head>
 <body>
   <div class="cursor" aria-hidden="true"><span class="cursor-label"></span></div>
@@ -29,6 +29,7 @@
       <button class="mode-switch active" type="button" data-mode="glow"><strong>Glow-Up</strong><small>Body &amp; Beauty</small></button>
       <button class="mode-switch" type="button" data-mode="work"><strong>Work Mode</strong><small>Mind &amp; Money</small></button>
       <button class="mode-switch" type="button" data-mode="calendar"><strong>Calendar</strong><small>Whole Life</small></button>
+      <button class="mode-switch" type="button" data-mode="account"><strong>Account</strong><small>Private Profile</small></button>
     </div>
     <nav class="nav glow-nav" aria-label="Glow-Up navigation">
       <a href="#home" data-cursor="track">Today</a>
@@ -491,6 +492,53 @@
     </section>
   </main>
 
+  <main id="accountMode" class="mode-page mode-page--account" hidden>
+    <section class="account-hero section">
+      <div class="account-hero-copy">
+        <p class="kicker">Private · Synced · Entirely Yours</p>
+        <h1><span>The Princess</span><span>Profile</span></h1>
+        <p class="intro">The face and name behind the archive. Softly guarded, beautifully filed.</p>
+      </div>
+      <div class="account-portrait-card">
+        <div class="account-portrait-frame">
+          <img id="accountProfileImage" alt="Profile portrait" hidden />
+          <span id="accountProfileInitial">Z</span>
+          <div class="account-portrait-glimmer" aria-hidden="true"></div>
+        </div>
+        <p class="section-label">Archive portrait</p>
+        <strong id="accountDisplayName">Princess</strong>
+        <span id="accountMemberSince">Private archive member</span>
+      </div>
+    </section>
+
+    <section class="account-command section">
+      <div class="section-head">
+        <div><p class="section-label">Account Atelier</p><h2>Your private identity.</h2></div>
+        <p class="ritual-board-note">A little vanity. A lot of data protection.</p>
+      </div>
+      <div class="account-grid">
+        <form class="account-settings-card" id="accountSettingsForm">
+          <p class="section-label">Profile details</p>
+          <h3>Make it unmistakably yours.</h3>
+          <label>Display username<input id="accountUsername" name="username" maxlength="40" required /></label>
+          <label class="account-photo-upload">Profile picture<input id="accountPhotoInput" type="file" accept="image/*" /></label>
+          <p class="account-helper">Your display username can change. Your sign-in username stays the same so you never get locked out.</p>
+          <button class="primary-btn" type="submit">Save princess profile</button>
+          <button class="secondary-btn" id="accountRemovePhoto" type="button">Remove profile picture</button>
+        </form>
+        <article class="account-status-card">
+          <p class="section-label">Private archive status</p>
+          <h3 id="accountSyncTitle">Supabase protected.</h3>
+          <div class="account-status-row"><span>Signed-in identity</span><strong id="accountLoginName">Private</strong></div>
+          <div class="account-status-row"><span>Cloud sync</span><strong id="accountSyncStatus">Connected</strong></div>
+          <div class="account-status-row"><span>Glow rituals filed</span><strong id="accountGlowCount">0</strong></div>
+          <div class="account-status-row"><span>Work proof filed</span><strong id="accountWorkCount">0</strong></div>
+          <button class="secondary-btn" id="accountSignOutBtn" type="button">Sign out of private archive</button>
+        </article>
+      </div>
+    </section>
+  </main>
+
   <div class="level-modal" id="levelModal" hidden aria-live="polite">
     <div class="level-modal-card">
       <button class="level-modal-close" id="levelModalClose" aria-label="Close level-up message">×</button>
@@ -764,6 +812,6 @@
 
   <div class="toast" id="toast" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=20260607-supabase-tables-2"></script>
+  <script src="script.js?v=20260607-account-4"></script>
 </body>
 </html>
