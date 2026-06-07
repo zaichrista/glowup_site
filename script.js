@@ -545,6 +545,7 @@ function closeMandatoryModal(modal) {
   modal.hidden = true;
   activeMandatoryModal = null;
   document.body.classList.remove("modal-locked");
+  releaseLoader();
 }
 function openOptionalHabitUpdate() {
   const modal = document.getElementById("habitUpdateModal");
@@ -559,6 +560,7 @@ function openOptionalHabitUpdate() {
 }
 function closeOptionalHabitUpdate() {
   document.getElementById("habitUpdateModal").hidden = true;
+  releaseLoader();
 }
 function validateRequiredForm(form, button, helper, readyMessage) {
   const valid = [...form.querySelectorAll("[required]")].every(field => field.value.trim());
@@ -761,9 +763,17 @@ animateCursor();
 const loaderLines = document.querySelectorAll(".loader-line");
 const loaderMark = document.querySelector(".loader-mark");
 const loader = document.getElementById("loader");
-setTimeout(() => { loaderLines[0]?.classList.remove("active"); loaderLines[1]?.classList.add("active"); }, 900);
-setTimeout(() => { loaderLines[1]?.classList.remove("active"); loaderMark?.classList.add("active"); }, 1850);
-setTimeout(() => loader?.classList.add("hide"), 2850);
+let loaderReleased = false;
+function releaseLoader() {
+  if (loaderReleased) return;
+  loaderReleased = true;
+  loaderLines.forEach(line => line.classList.remove("active"));
+  loaderMark?.classList.remove("active");
+  loaderLines[0]?.classList.add("active");
+  setTimeout(() => { loaderLines[0]?.classList.remove("active"); loaderLines[1]?.classList.add("active"); }, 900);
+  setTimeout(() => { loaderLines[1]?.classList.remove("active"); loaderMark?.classList.add("active"); }, 1850);
+  setTimeout(() => loader?.classList.add("hide"), 2850);
+}
 document.getElementById("todayDate").textContent = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
 
 document.getElementById("completeDayBtn")?.addEventListener("click", completeDay);
