@@ -3791,6 +3791,18 @@ body.mode-account::before {
 .account-photo-upload input { padding: 12px; }
 .account-helper { color: var(--muted); font-size: 13px; line-height: 1.6; }
 .account-settings-card button { width: 100%; margin-top: 10px; }
+.account-settings-card .secondary-btn,
+.account-status-card .secondary-btn {
+  border-color: rgba(104,33,61,.24);
+  background: linear-gradient(135deg, #f7d7e3, #f2dfc2);
+  color: #5f1d38;
+  box-shadow: 0 8px 24px rgba(104,33,61,.1);
+}
+.account-settings-card .secondary-btn:hover,
+.account-status-card .secondary-btn:hover {
+  background: linear-gradient(135deg, #efbad0, #ecd1a7);
+  color: #451127;
+}
 .account-status-row {
   display: flex;
   justify-content: space-between;
@@ -3824,6 +3836,18 @@ body.time-night.mode-account .account-portrait-card {
   border-color: var(--line);
 }
 body.time-night.mode-account .account-settings-card input { background: #160c12; color: var(--ink); }
+body.time-night.mode-account .account-settings-card .secondary-btn,
+body.time-night.mode-account .account-status-card .secondary-btn {
+  border-color: rgba(255,226,235,.24);
+  background: linear-gradient(135deg, #622942, #40202f);
+  color: #fff1f4;
+  box-shadow: 0 10px 28px rgba(8,2,5,.28);
+}
+body.time-night.mode-account .account-settings-card .secondary-btn:hover,
+body.time-night.mode-account .account-status-card .secondary-btn:hover {
+  background: linear-gradient(135deg, #79334f, #512539);
+  color: #fff8f5;
+}
 
 @media (max-width: 900px) {
   .account-hero, .account-grid { grid-template-columns: 1fr; }
