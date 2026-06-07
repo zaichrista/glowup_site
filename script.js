@@ -22,6 +22,7 @@ const HABIT_UPDATE_KEY = "glowHabitUpdates";
 const EVENING_KEY = "glowEveningReflections";
 const EVENTS_KEY = "glowEvents";
 const CUSTOM_RITUALS_KEY = "glowCustomRituals";
+const RITUAL_OVERRIDES_KEY = "glowRitualOverrides";
 const WORK_STATE_KEY = "glowWorkState.v1";
 const WORK_TASKS_KEY = "workTasks";
 const WORK_EVENTS_KEY = "workEvents";
@@ -58,6 +59,21 @@ function applyTimeTheme() {
   const copy = document.getElementById("timeAtmosphereCopy");
   if (label) label.textContent = atmosphere[0];
   if (copy) copy.textContent = `${atmosphere[1]} Palette synced to your day.`;
+  configureDynamicLoader(theme);
+}
+function configureDynamicLoader(theme) {
+  const copy = {
+    dawn: ["The archive wakes before the world.", "Soft light. Serious standards.", "Dawn Ritual"],
+    morning: ["Morning light, polished intentions.", "The day is ready to be directed.", "Morning Command"],
+    midday: ["Midday discipline is becoming visible.", "Refiling the future in brighter light.", "Midday Archive"],
+    afternoon: ["The afternoon edit is in progress.", "Quiet consistency, beautifully filed.", "Afternoon Polish"],
+    sunset: ["The archive is catching rose-gold light.", "Closing the distance to becoming.", "Sunset Glow"],
+    evening: ["The day softens. The standards remain.", "Preparing the archive for reflection.", "Evening Edition"],
+    night: ["The private archive is still awake.", "Moonlit discipline, quietly filed.", "Night Archive"]
+  }[theme] || ["The archive is waking.", "Zai builds systems.", "Glow-Up Station"];
+  document.querySelectorAll(".loader-line").forEach((line, index) => { if (copy[index]) line.textContent = copy[index]; });
+  const mark = document.querySelector(".loader-mark");
+  if (mark) mark.textContent = copy[2];
 }
 
 const categoryMeta = {
@@ -131,9 +147,11 @@ let habits = [
   ritual("dress-countdown", "Dress fitting countdown", "beauty", "custom", "Review the fitting plan every ten days.", "A custom cycle keeps the event calm and considered.", 10)
 ];
 
+const baseHabits = habits.map(habit => ({ ...habit }));
+let ritualOverrides = loadRecords(RITUAL_OVERRIDES_KEY);
 let customRituals = loadCollection(CUSTOM_RITUALS_KEY);
 let events = loadCollection(EVENTS_KEY);
-habits.push(...customRituals.filter(item => !item.deleted).map(item => ({ ...item, custom: true, description: item.notes || item.why || "A ritual designed for your life." })));
+syncCustomRituals();
 
 const levels = [
   level(1, "The Initiate", 0, 7, "more rose accents"),
@@ -526,7 +544,7 @@ function renderHabitCard(habit) {
     <p class="command-habit-copy">${habit.description}</p>
     ${linked.length ? `<div class="event-tags">${linked.map(event => `<button data-open-event="${event.id}" type="button">Linked to: ${event.name}</button>`).join("")}</div>` : ""}
     <details><summary>Why it matters</summary><p>${habit.why}</p></details>
-    ${habit.custom ? `<div class="custom-ritual-actions"><button data-edit-ritual="${habit.id}" type="button">Edit</button><button data-pause-ritual="${habit.id}" type="button">${habit.paused ? "Resume" : "Pause"}</button><button data-delete-ritual="${habit.id}" type="button">Delete</button></div>` : ""}
+    <div class="custom-ritual-actions"><button data-edit-ritual="${habit.id}" type="button">Edit</button>${habit.custom ? `<button data-pause-ritual="${habit.id}" type="button">${habit.paused ? "Resume" : "Pause"}</button>` : ""}<button data-delete-ritual="${habit.id}" type="button">Delete</button></div>
     <button class="ritual-check" data-habit-id="${habit.id}" data-cursor="ritual">${done ? "✓ Already handled" : "Complete ritual"}</button>
   </article>`;
 }
@@ -827,12 +845,13 @@ function recommendRitual(title) {
 }
 function openRitualEditor(id = "") {
   const form = document.getElementById("ritualEditorForm");
-  const item = customRituals.find(ritual => ritual.id === id);
+  const item = habits.find(ritual => ritual.id === id);
   form.reset();
   form.elements.ritualId.value = item?.id || "";
   ["title", "category", "frequency", "importance", "why", "notes", "startDate", "endDate", "targetCount"].forEach(name => {
     if (item && form.elements[name]) form.elements[name].value = item[name] || "";
   });
+  if (item && !item.notes) form.elements.notes.value = item.description || "";
   form.elements.linkedEvent.value = item?.linkedEventIds?.[0] || "";
   document.getElementById("ritualEditorTitle").textContent = item ? "Edit the Ritual." : "Add a Ritual.";
   updateRitualRecommendation();
@@ -852,8 +871,11 @@ function updateRitualRecommendation() {
   });
 }
 function syncCustomRituals() {
-  habits = habits.filter(habit => !habit.custom);
-  habits.push(...customRituals.filter(item => !item.deleted).map(item => ({ ...item, custom: true, description: item.notes || item.why || "A ritual designed for your life." })));
+  habits = baseHabits
+    .map(habit => ({ ...habit, ...(ritualOverrides[habit.id] || {}), builtIn: true }))
+    .filter(habit => !habit.deleted);
+  habits.push(...customRituals.filter(item => !item.deleted).map(item => ({ ...item, custom: true, description: item.notes || item.description || item.why || "A ritual designed for your life." })));
+  localStorage.setItem(RITUAL_OVERRIDES_KEY, JSON.stringify(ritualOverrides));
   saveCollection(CUSTOM_RITUALS_KEY, customRituals);
 }
 function toggleCustomRitualPause(id) {
@@ -865,8 +887,9 @@ function toggleCustomRitualPause(id) {
 }
 function deleteCustomRitual(id) {
   const item = customRituals.find(ritual => ritual.id === id);
-  if (!item) return;
-  item.deleted = true;
+  if (item) item.deleted = true;
+  else if (baseHabits.some(ritual => ritual.id === id)) ritualOverrides[id] = { ...(ritualOverrides[id] || {}), deleted: true };
+  else return;
   events.forEach(event => event.ritualLinks = (event.ritualLinks || []).filter(link => link.ritualId !== id));
   saveCollection(EVENTS_KEY, events);
   syncCustomRituals();
@@ -925,6 +948,7 @@ function initialiseAtelier() {
     const form = event.currentTarget;
     const data = new FormData(form);
     const existing = customRituals.find(item => item.id === data.get("ritualId"));
+    const existingBuiltIn = baseHabits.find(item => item.id === data.get("ritualId"));
     const suggestion = recommendRitual(data.get("title"));
     if (suggestion.warning && !data.get("why").trim()) {
       showToast("Let’s make this ritual effective without making it destructive.");
@@ -932,13 +956,15 @@ function initialiseAtelier() {
     }
     const linkedEventIds = data.get("linkedEvent") ? [data.get("linkedEvent")] : [];
     const record = {
-      ...(existing || {}), id: existing?.id || `custom_${Date.now()}`, title: data.get("title").trim(),
+      ...(existing || existingBuiltIn || {}), id: existing?.id || existingBuiltIn?.id || `custom_${Date.now()}`, title: data.get("title").trim(),
       category: data.get("category"), frequency: data.get("frequency"), importance: data.get("importance"),
       why: data.get("why").trim() || suggestion.why, notes: data.get("notes").trim(),
+      description: data.get("notes").trim() || existingBuiltIn?.description || data.get("why").trim() || suggestion.why,
       startDate: data.get("startDate"), endDate: data.get("endDate"), targetCount: Number(data.get("targetCount") || 1),
       linkedEventIds, paused: existing?.paused || false, createdAt: existing?.createdAt || new Date().toISOString()
     };
     if (existing) customRituals[customRituals.findIndex(item => item.id === existing.id)] = record;
+    else if (existingBuiltIn) ritualOverrides[existingBuiltIn.id] = { ...record, builtIn: true, deleted: false };
     else customRituals.push(record);
     events.forEach(item => item.ritualLinks = (item.ritualLinks || []).filter(link => link.ritualId !== record.id));
     linkedEventIds.forEach(id => {
@@ -952,7 +978,7 @@ function initialiseAtelier() {
     syncCustomRituals();
     closeAtelierModal("ritualEditorModal");
     renderAll();
-    showToast("Custom ritual saved. The life-command system noticed.");
+    showToast(existingBuiltIn ? "Ritual updated. Its history remains intact." : "Custom ritual saved. The life-command system noticed.");
   });
   document.getElementById("eventArchiveForm").addEventListener("submit", event => {
     event.preventDefault();
@@ -1039,7 +1065,12 @@ function closeMandatoryModal(modal) {
 function openOptionalHabitUpdate() {
   const modal = document.getElementById("habitUpdateModal");
   const list = document.getElementById("habitUpdateList");
-  const due = activeHabits().filter(habit => !isComplete(habit));
+  const today = parseDate(TODAY_KEY);
+  const due = activeHabits().filter(habit => {
+    if (isComplete(habit, today)) return false;
+    if (habit.frequency === "daily") return true;
+    return !!calendarOccurrence(habit, today, "glow-ritual");
+  });
   list.innerHTML = due.map(habit => {
     const meta = categoryMeta[habit.category];
     return `<label class="habit-update-option"><input type="checkbox" name="habitUpdate" value="${habit.id}" /><span>${meta.icon}</span><span><strong>${habit.title}</strong><small>${frequencyLabel(habit.frequency)} · ${dueStatus(habit).label}</small></span></label>`;
@@ -1194,6 +1225,7 @@ function startResetHold() {
     localStorage.removeItem(EVENING_KEY);
     localStorage.removeItem(EVENTS_KEY);
     localStorage.removeItem(CUSTOM_RITUALS_KEY);
+    localStorage.removeItem(RITUAL_OVERRIDES_KEY);
     localStorage.removeItem(WORK_STATE_KEY);
     localStorage.removeItem(WORK_TASKS_KEY);
     localStorage.removeItem(WORK_EVENTS_KEY);
@@ -1204,6 +1236,7 @@ function startResetHold() {
     localStorage.removeItem(CALENDAR_DAY_NOTES_KEY);
     events = [];
     customRituals = [];
+    ritualOverrides = {};
     syncCustomRituals();
     initialiseEventSelect();
     state = defaultState();
@@ -2405,6 +2438,7 @@ const observer = new IntersectionObserver(entries => entries.forEach(entry => {
 if (currentSection) observer.observe(currentSection);
 
 initialiseCheckinForms();
+applyTimeTheme();
 runDailyCheckinPriority();
 try {
   initialiseWorkMode();
