@@ -3845,3 +3845,30 @@ body.time-night.mode-account .account-settings-card input { background: #160c12;
   .account-settings-card button, .account-status-card button { min-height: 42px; }
   .account-status-row { padding: 11px 0; font-size: 11px; }
 }
+
+/* Keep every primary mode, including Account, visible at every viewport size. */
+.mode-switcher {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mode-switcher::-webkit-scrollbar { display: none; }
+.mode-switch { flex: 0 0 auto; }
+
+@media (max-width: 1450px) {
+  .site-header .nav { display: none; }
+}
+
+@media (max-width: 700px) {
+  .site-header { grid-template-columns: minmax(0, 1fr) !important; }
+  .mode-switcher {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    width: 100%;
+    overflow: visible;
+  }
+  .mode-switch {
+    width: 100%;
+    min-width: 0;
+  }
+}
