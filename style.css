@@ -3337,28 +3337,28 @@ body.time-night {
 }
 
 body.time-night.mode-work {
-  --paper: #0f090e;
-  --paper-2: #190e17;
-  --pearl: #fff1ed;
-  --ink: #fff1ed;
-  --muted: #d5b6c4;
-  --rose: #bd6f98;
-  --hot: #d67aa3;
-  --hot-pink: #d67aa3;
-  --blush: #4f2a43;
-  --soft: #8d5b79;
-  --mauve: #bb8da5;
-  --champagne: #dec69f;
-  --gold: #c4a36e;
-  --oxblood: #8a4264;
-  --wine: #ecc1d0;
-  --line: rgba(255,226,235,.16);
-  --orb-one: rgba(129,72,119,.28);
-  --orb-two: rgba(70,38,74,.4);
-  --orb-three: rgba(175,99,114,.23);
-  --aura: rgba(159,77,124,.18);
-  --card-bg: rgba(35,20,32,.86);
-  --sky-wash: rgba(71,35,72,.42);
+  --paper: #070d17;
+  --paper-2: #0c1625;
+  --pearl: #eef7ff;
+  --ink: #eef7ff;
+  --muted: #adc4d9;
+  --rose: #669ed0;
+  --hot: #78b6e8;
+  --hot-pink: #78b6e8;
+  --blush: #1e3d5a;
+  --soft: #426b91;
+  --mauve: #91afca;
+  --champagne: #d8c9a9;
+  --gold: #bfa979;
+  --oxblood: #35658e;
+  --wine: #b8d9f2;
+  --line: rgba(213,237,255,.17);
+  --orb-one: rgba(45,112,168,.34);
+  --orb-two: rgba(34,67,111,.46);
+  --orb-three: rgba(114,132,170,.24);
+  --aura: rgba(76,143,199,.2);
+  --card-bg: rgba(15,31,50,.88);
+  --sky-wash: rgba(28,69,111,.46);
 }
 
 body.time-night.mode-calendar {
@@ -3576,4 +3576,107 @@ body.time-night .auth-gate {
     radial-gradient(ellipse at 20% 18%, rgba(179,60,106,.3), transparent 36%),
     radial-gradient(ellipse at 80% 35%, rgba(105,45,81,.3), transparent 40%),
     linear-gradient(150deg, #170a11, #090507);
+}
+
+/* Work Mode keeps its midnight-blue identity after the shared warm night layer. */
+body.time-night.mode-work::before {
+  opacity: .86;
+  background:
+    radial-gradient(ellipse at 18% 20%, rgba(49,119,177,.28), transparent 34%),
+    radial-gradient(ellipse at 84% 35%, rgba(42,70,121,.34), transparent 38%),
+    radial-gradient(ellipse at 48% 90%, rgba(117,126,157,.2), transparent 42%),
+    linear-gradient(150deg, #091321, #050910 66%);
+}
+
+body.time-night.mode-work .orb--one { background: rgba(45,116,177,.42); }
+body.time-night.mode-work .orb--two { background: rgba(42,70,121,.48); }
+body.time-night.mode-work .orb--three { background: rgba(113,127,163,.3); }
+
+body.time-night.mode-work .site-header {
+  background: rgba(7,13,23,.92);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+body.time-night.mode-work .section {
+  background-image: linear-gradient(145deg, rgba(49,104,153,.09), transparent 44%);
+}
+
+body.time-night.mode-work .hero-pie-card,
+body.time-night.mode-work .score-card,
+body.time-night.mode-work .summary-tile,
+body.time-night.mode-work .command-habit,
+body.time-night.mode-work .review-card,
+body.time-night.mode-work .daily-archive-card,
+body.time-night.mode-work .work-level-card,
+body.time-night.mode-work .next-dday,
+body.time-night.mode-work .event-card,
+body.time-night.mode-work .event-detail-hero,
+body.time-night.mode-work .event-metrics article,
+body.time-night.mode-work .event-story article,
+body.time-night.mode-work .event-category-balance,
+body.time-night.mode-work .event-reflection,
+body.time-night.mode-work .event-notes,
+body.time-night.mode-work .event-linked-list article {
+  background: linear-gradient(145deg, rgba(22,45,70,.92), rgba(10,23,39,.94));
+  border-color: var(--line);
+  color: var(--ink);
+  box-shadow: 0 20px 58px rgba(0,0,0,.44), 0 8px 28px rgba(34,93,144,.12);
+}
+
+body.time-night.mode-work .command-habit.done {
+  background: linear-gradient(145deg, rgba(39,84,122,.94), rgba(20,48,76,.94));
+}
+
+body.time-night.mode-work .tracker-scroll,
+body.time-night.mode-work .habit-table .habit-name,
+body.time-night.mode-work .tracker-tabs,
+body.time-night.mode-work .tracker-arrow,
+body.time-night.mode-work .tracker-today,
+body.time-night.mode-work .habit-filters,
+body.time-night.mode-work .event-tabs {
+  background: rgba(11,25,41,.96);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+body.time-night.mode-work .habit-table thead .habit-name { background: #173e61; }
+
+body.time-night.mode-work .atelier-form,
+body.time-night.mode-work .calendar-item-detail-content,
+body.time-night.mode-work .level-modal-card,
+body.time-night.mode-work .checkin-card {
+  background:
+    radial-gradient(circle at 50% 0, rgba(64,126,181,.18), transparent 42%),
+    #0d1c2d;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+body.time-night.mode-work input,
+body.time-night.mode-work textarea,
+body.time-night.mode-work select {
+  background: #08131f;
+  border-color: rgba(213,237,255,.2);
+  color: var(--ink);
+}
+
+body.time-night.mode-work .primary-btn,
+body.time-night.mode-work .mode-switch.active,
+body.time-night.mode-work .work-task-filter.active,
+body.time-night.mode-work .work-tracker-tab.active {
+  background: linear-gradient(135deg, #548fc2, #244f78);
+  border-color: rgba(213,237,255,.18);
+  color: #f5fbff;
+  box-shadow: 0 10px 30px rgba(42,104,157,.3);
+}
+
+body.time-night.mode-work .frequency-badge {
+  background: rgba(40,86,126,.72);
+  border-color: rgba(213,237,255,.16);
+  color: #e8f6ff;
+}
+
+body.time-night.mode-work .pie {
+  background: conic-gradient(#6da9d8 calc(var(--p) * 1%), #1b3955 0);
 }
