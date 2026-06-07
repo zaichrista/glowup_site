@@ -2089,6 +2089,7 @@ function updateCalendarPeriodLabel() {
 }
 
 let draggedCalendarItem = null;
+let touchCalendarDrag = null;
 function moveCalendarItemToDate(item, targetDate) {
   if (!item || !targetDate || item.date === targetDate) return;
   let recurringRuleChanged = false;
@@ -2169,6 +2170,46 @@ function persistScheduledSource(sourceType, source) {
     calendarScheduleOverrides[scheduleKey] = { itemId: source.id, sourceType, preferredDay: source.preferredDay, preferredDayOfMonth: source.preferredDayOfMonth, calendarVisible: true, updatedAt: new Date().toISOString() };
   }
 }
+function beginTouchCalendarDrag(element, item, pointerEvent) {
+  touchCalendarDrag = {
+    item,
+    element,
+    ghost: element.cloneNode(true),
+    activeTarget: null,
+    pointerId: pointerEvent.pointerId
+  };
+  touchCalendarDrag.ghost.classList.add("calendar-touch-ghost", "is-dragging");
+  touchCalendarDrag.ghost.style.left = `${pointerEvent.clientX}px`;
+  touchCalendarDrag.ghost.style.top = `${pointerEvent.clientY}px`;
+  document.body.appendChild(touchCalendarDrag.ghost);
+  element.classList.add("is-dragging");
+  document.body.classList.add("calendar-is-dragging");
+}
+function updateTouchCalendarDrag(pointerEvent) {
+  if (!touchCalendarDrag) return;
+  touchCalendarDrag.ghost.style.left = `${pointerEvent.clientX}px`;
+  touchCalendarDrag.ghost.style.top = `${pointerEvent.clientY}px`;
+  touchCalendarDrag.ghost.hidden = true;
+  const target = document.elementFromPoint(pointerEvent.clientX, pointerEvent.clientY)?.closest("[data-calendar-drop-date]");
+  touchCalendarDrag.ghost.hidden = false;
+  if (target !== touchCalendarDrag.activeTarget) {
+    touchCalendarDrag.activeTarget?.classList.remove("calendar-drop-active");
+    touchCalendarDrag.activeTarget = target;
+    target?.classList.add("calendar-drop-active");
+  }
+}
+function endTouchCalendarDrag(shouldMove = true) {
+  if (!touchCalendarDrag) return;
+  const { item, element, ghost, activeTarget } = touchCalendarDrag;
+  element.classList.remove("is-dragging");
+  element.dataset.justDragged = "true";
+  ghost.remove();
+  activeTarget?.classList.remove("calendar-drop-active");
+  document.body.classList.remove("calendar-is-dragging");
+  touchCalendarDrag = null;
+  setTimeout(() => { element.dataset.justDragged = "false"; }, 250);
+  if (shouldMove && activeTarget?.dataset.calendarDropDate) moveCalendarItemToDate(item, activeTarget.dataset.calendarDropDate);
+}
 function attachCalendarEventListeners() {
   document.querySelectorAll("[data-calendar-item-id]").forEach(element => {
     element.addEventListener("click", event => {
@@ -2194,6 +2235,51 @@ function attachCalendarEventListeners() {
       document.querySelectorAll(".calendar-drop-active").forEach(target => target.classList.remove("calendar-drop-active"));
       draggedCalendarItem = null;
       setTimeout(() => { element.dataset.justDragged = "false"; }, 200);
+    });
+    element.addEventListener("pointerdown", event => {
+      if (!window.matchMedia("(pointer: coarse)").matches || event.pointerType === "mouse") return;
+      const item = getAllCalendarItems(parseDate(element.dataset.calendarDate)).find(entry => entry.id === element.dataset.calendarItemId);
+      if (!item) return;
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let hasMoved = false;
+      const timer = setTimeout(() => {
+        if (!hasMoved) beginTouchCalendarDrag(element, item, event);
+      }, 220);
+      const handleMove = moveEvent => {
+        const distance = Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY);
+        if (!touchCalendarDrag && distance > 10) {
+          hasMoved = true;
+          clearTimeout(timer);
+          cleanup(false);
+          return;
+        }
+        if (touchCalendarDrag?.pointerId === moveEvent.pointerId) {
+          moveEvent.preventDefault();
+          updateTouchCalendarDrag(moveEvent);
+        }
+      };
+      const handleUp = upEvent => {
+        clearTimeout(timer);
+        if (touchCalendarDrag?.pointerId === upEvent.pointerId) {
+          upEvent.preventDefault();
+          endTouchCalendarDrag(true);
+        }
+        cleanup(false);
+      };
+      const cleanup = cancelDrag => {
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
+        window.removeEventListener("pointercancel", handleCancel);
+        if (cancelDrag) endTouchCalendarDrag(false);
+      };
+      const handleCancel = () => {
+        clearTimeout(timer);
+        cleanup(true);
+      };
+      window.addEventListener("pointermove", handleMove, { passive: false });
+      window.addEventListener("pointerup", handleUp, { passive: false });
+      window.addEventListener("pointercancel", handleCancel, { passive: false });
     });
   });
   document.querySelectorAll("[data-calendar-drop-date]").forEach(target => {
