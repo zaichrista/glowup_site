@@ -1,11 +1,26 @@
 if ("scrollRestoration" in history) history.scrollRestoration = "manual";
+function forcePageTop() {
+  const previousBehavior = document.documentElement.style.scrollBehavior;
+  document.documentElement.style.scrollBehavior = "auto";
+  window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  if (document.body) document.body.scrollTop = 0;
+  requestAnimationFrame(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.style.scrollBehavior = previousBehavior;
+  });
+}
+if (location.hash) history.replaceState(null, "", `${location.pathname}${location.search}`);
+forcePageTop();
+window.addEventListener("DOMContentLoaded", forcePageTop);
+window.addEventListener("load", forcePageTop);
+window.addEventListener("pageshow", forcePageTop);
 
 const STORAGE_KEY = "zaiGlowUpDashboard.v1";
 const CHECKIN_KEY = "glowCheckins";
 const HABIT_UPDATE_KEY = "glowHabitUpdates";
 const EVENING_KEY = "glowEveningReflections";
 const TODAY_KEY = dateKey(new Date());
-const OPTIONAL_SESSION_KEY = `glowOptionalHabitPopupShown_${TODAY_KEY}`;
 
 const categoryMeta = {
   body: { label: "Body", icon: "✦", group: "Body" },
@@ -539,7 +554,6 @@ function openOptionalHabitUpdate() {
     const meta = categoryMeta[habit.category];
     return `<label class="habit-update-option"><input type="checkbox" name="habitUpdate" value="${habit.id}" /><span>${meta.icon}</span><span><strong>${habit.title}</strong><small>${frequencyLabel(habit.frequency)} · ${dueStatus(habit).label}</small></span></label>`;
   }).join("") || `<p class="optional-empty">Everything due is already handled. Miranda has no notes.</p>`;
-  sessionStorage.setItem(OPTIONAL_SESSION_KEY, "shown");
   modal.hidden = false;
   requestAnimationFrame(() => document.getElementById("habitUpdateClose")?.focus());
 }
@@ -638,7 +652,7 @@ function runDailyCheckinPriority() {
     openMandatoryModal(document.getElementById("morningCheckinModal"));
     return;
   }
-  if (!sessionStorage.getItem(OPTIONAL_SESSION_KEY)) openOptionalHabitUpdate();
+  openOptionalHabitUpdate();
 }
 
 function completeDay() {
@@ -799,5 +813,8 @@ renderMeasurements();
 initialiseCheckinForms();
 bindCursorLabels();
 saveState();
-setTimeout(() => scrollTo(0, 0), 0);
+forcePageTop();
+setTimeout(forcePageTop, 0);
+setTimeout(forcePageTop, 100);
+setTimeout(forcePageTop, 500);
 runDailyCheckinPriority();
