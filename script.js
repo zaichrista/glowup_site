@@ -33,10 +33,14 @@ const CALENDAR_COMPLETIONS_KEY = "calendarItemCompletions";
 const CALENDAR_DAY_NOTES_KEY = "calendarDayNotes";
 const SUPABASE_URL = "https://xoxmhnhfmkgzaxqxiavo.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_uGE3D8WW69Kma90w8qJoSw_iC9soT99";
-const CLOUD_TABLE = "user_archives";
 const CLOUD_LAST_REMOTE_KEY = "glowCloudLastRemoteAt";
 const CLOUD_LOCAL_CHANGE_KEY = "glowCloudLocalChangedAt";
 const CLOUD_USERNAME_KEY = "glowCloudUsername";
+const CLOUD_TABLES = [
+  "profiles", "glow_completions", "glow_checkins", "evening_reflections",
+  "measurements", "glow_events", "custom_rituals", "work_tasks",
+  "work_completions", "work_events", "calendar_items", "calendar_day_notes"
+];
 const CLOUD_SYNC_KEYS = [
   STORAGE_KEY, CHECKIN_KEY, HABIT_UPDATE_KEY, EVENING_KEY, EVENTS_KEY,
   CUSTOM_RITUALS_KEY, RITUAL_OVERRIDES_KEY, WORK_STATE_KEY, WORK_TASKS_KEY,
@@ -51,7 +55,6 @@ let cloudUser = null;
 let cloudApplying = false;
 let cloudSyncTimer = null;
 let cloudStartupComplete = false;
-let pendingCloudArchive = null;
 const nativeStorageSetItem = Storage.prototype.setItem;
 const nativeStorageRemoveItem = Storage.prototype.removeItem;
 
@@ -78,18 +81,73 @@ function usernameEmail(username) {
   const safe = username.toLowerCase().trim().replace(/[^a-z0-9._-]/g, "-").replace(/^-+|-+$/g, "");
   return safe ? `${safe}@users.glowup.app` : "";
 }
-function localArchiveSnapshot() {
-  return Object.fromEntries(CLOUD_SYNC_KEYS.map(key => [key, localStorage.getItem(key)]).filter(([, value]) => value !== null));
+function rowPayload(externalId, payload, extra = {}) {
+  return { user_id: cloudUser.id, external_id: String(externalId), payload, updated_at: new Date().toISOString(), ...extra };
 }
-function hasLocalArchiveData() {
-  return CLOUD_SYNC_KEYS.some(key => localStorage.getItem(key) !== null);
+function normalizedLocalRows() {
+  const glowState = loadState();
+  const blueState = loadWorkState();
+  const glowCompletions = [];
+  Object.entries(glowState.days || {}).forEach(([date, day]) => Object.entries(day.checked || {}).forEach(([ritualId, done]) => {
+    if (done) glowCompletions.push(rowPayload(`${date}:${ritualId}`, { saved: !!day.saved }, { date_key: date, ritual_id: ritualId }));
+  }));
+  const workCompletions = [];
+  Object.entries(blueState.days || {}).forEach(([date, day]) => Object.entries(day.checked || {}).forEach(([taskId, done]) => {
+    if (done) workCompletions.push(rowPayload(`${date}:${taskId}`, {}, { date_key: date, task_id: taskId }));
+  }));
+  const profilePayload = {
+    glowState: { ...glowState, days: {}, measurements: [] },
+    workState: { ...blueState, days: {} },
+    ritualOverrides: loadRecords(RITUAL_OVERRIDES_KEY),
+    habitUpdates: loadRecords(HABIT_UPDATE_KEY),
+    modeMigration: localStorage.getItem(MODE_MIGRATION_KEY),
+    calendarScheduleOverrides: loadRecords(CALENDAR_SCHEDULE_OVERRIDES_KEY),
+    calendarItemCompletions: loadRecords(CALENDAR_COMPLETIONS_KEY)
+  };
+  return {
+    profiles: [{ user_id: cloudUser.id, username: localStorage.getItem(CLOUD_USERNAME_KEY) || cloudUser.user_metadata?.username || "", payload: profilePayload, updated_at: new Date().toISOString() }],
+    glow_completions: glowCompletions,
+    glow_checkins: Object.entries(loadRecords(CHECKIN_KEY)).map(([date, payload]) => rowPayload(date, payload, { date_key: date })),
+    evening_reflections: Object.entries(loadRecords(EVENING_KEY)).map(([date, payload]) => rowPayload(date, payload, { date_key: date })),
+    measurements: (glowState.measurements || []).map((payload, index) => rowPayload(`${payload.date || "undated"}:${index}`, payload, { date_key: payload.date || null })),
+    glow_events: loadCollection(EVENTS_KEY).map(payload => rowPayload(payload.id, payload, { event_date: payload.date || null })),
+    custom_rituals: loadCollection(CUSTOM_RITUALS_KEY).map(payload => rowPayload(payload.id, payload)),
+    work_tasks: loadCollection(WORK_TASKS_KEY).map(payload => rowPayload(payload.id, payload)),
+    work_completions: workCompletions,
+    work_events: loadCollection(WORK_EVENTS_KEY).map(payload => rowPayload(payload.id, payload, { event_date: payload.date || null })),
+    calendar_items: loadCollection(CALENDAR_ITEMS_KEY).map(payload => rowPayload(payload.id, payload, { date_key: payload.date || null })),
+    calendar_day_notes: Object.entries(loadRecords(CALENDAR_DAY_NOTES_KEY)).map(([date, payload]) => rowPayload(date, payload, { date_key: date }))
+  };
 }
-function applyCloudArchive(data = {}) {
-  cloudApplying = true;
-  CLOUD_SYNC_KEYS.forEach(key => {
-    if (Object.prototype.hasOwnProperty.call(data, key) && data[key] !== null) nativeStorageSetItem.call(localStorage, key, data[key]);
-    else nativeStorageRemoveItem.call(localStorage, key);
+function applyNormalizedCloudRows(rows = {}) {
+  const profile = rows.profiles?.[0]?.payload || {};
+  const glowState = { ...defaultState(), ...(profile.glowState || {}), days: {}, measurements: (rows.measurements || []).map(row => row.payload) };
+  (rows.glow_completions || []).forEach(row => {
+    glowState.days[row.date_key] ||= { checked: {}, saved: !!row.payload?.saved };
+    glowState.days[row.date_key].checked[row.ritual_id] = true;
   });
+  const blueState = { ...defaultWorkState(), ...(profile.workState || {}), days: {} };
+  (rows.work_completions || []).forEach(row => {
+    blueState.days[row.date_key] ||= { checked: {} };
+    blueState.days[row.date_key].checked[row.task_id] = true;
+  });
+  cloudApplying = true;
+  const put = (key, value) => nativeStorageSetItem.call(localStorage, key, JSON.stringify(value));
+  put(STORAGE_KEY, glowState);
+  put(WORK_STATE_KEY, blueState);
+  put(CHECKIN_KEY, Object.fromEntries((rows.glow_checkins || []).map(row => [row.external_id, row.payload])));
+  put(EVENING_KEY, Object.fromEntries((rows.evening_reflections || []).map(row => [row.external_id, row.payload])));
+  put(EVENTS_KEY, (rows.glow_events || []).map(row => row.payload));
+  put(CUSTOM_RITUALS_KEY, (rows.custom_rituals || []).map(row => row.payload));
+  put(WORK_TASKS_KEY, (rows.work_tasks || []).map(row => row.payload));
+  put(WORK_EVENTS_KEY, (rows.work_events || []).map(row => row.payload));
+  put(CALENDAR_ITEMS_KEY, (rows.calendar_items || []).map(row => row.payload));
+  put(CALENDAR_DAY_NOTES_KEY, Object.fromEntries((rows.calendar_day_notes || []).map(row => [row.external_id, row.payload])));
+  put(RITUAL_OVERRIDES_KEY, profile.ritualOverrides || {});
+  put(HABIT_UPDATE_KEY, profile.habitUpdates || {});
+  put(CALENDAR_SCHEDULE_OVERRIDES_KEY, profile.calendarScheduleOverrides || {});
+  put(CALENDAR_COMPLETIONS_KEY, profile.calendarItemCompletions || {});
+  if (profile.modeMigration) nativeStorageSetItem.call(localStorage, MODE_MIGRATION_KEY, profile.modeMigration);
   cloudApplying = false;
 }
 function scheduleCloudUpload() {
@@ -100,14 +158,27 @@ function scheduleCloudUpload() {
 async function uploadLocalArchive() {
   if (!cloudClient || !cloudUser || cloudApplying) return;
   const updatedAt = new Date().toISOString();
-  const { error } = await cloudClient.from(CLOUD_TABLE).upsert({
-    user_id: cloudUser.id,
-    data: localArchiveSnapshot(),
-    updated_at: updatedAt
-  }, { onConflict: "user_id" });
-  if (error) {
-    updateAuthStatus(`Signed in, but cloud sync needs setup: ${error.message}`, true);
-    return;
+  const rows = normalizedLocalRows();
+  for (const table of CLOUD_TABLES) {
+    const records = rows[table] || [];
+    const conflict = table === "profiles" ? "user_id" : "user_id,external_id";
+    if (records.length) {
+      const { error } = await cloudClient.from(table).upsert(records, { onConflict: conflict });
+      if (error) {
+        updateAuthStatus(`Signed in, but ${table} sync needs setup: ${error.message}`, true);
+        return;
+      }
+    }
+    if (table !== "profiles") {
+      const ids = records.map(record => record.external_id);
+      let deletion = cloudClient.from(table).delete().eq("user_id", cloudUser.id);
+      deletion = ids.length ? deletion.not("external_id", "in", `(${ids.map(id => `"${String(id).replaceAll('"', '\\"')}"`).join(",")})`) : deletion;
+      const { error: deleteError } = await deletion;
+      if (deleteError) {
+        updateAuthStatus(`Signed in, but ${table} cleanup needs setup: ${deleteError.message}`, true);
+        return;
+      }
+    }
   }
   nativeStorageSetItem.call(localStorage, CLOUD_LAST_REMOTE_KEY, updatedAt);
   nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, updatedAt);
@@ -160,37 +231,60 @@ function finishCloudStartup() {
   hideAuthGate();
   runDailyCheckinPriority();
 }
-function chooseArchive(remoteRow) {
-  pendingCloudArchive = remoteRow;
-  document.getElementById("syncChoiceModal").hidden = false;
-  document.body.classList.add("modal-locked");
+async function fetchNormalizedCloudRows() {
+  const entries = await Promise.all(CLOUD_TABLES.map(async table => {
+    const { data, error } = await cloudClient.from(table).select("*").eq("user_id", cloudUser.id).order("updated_at", { ascending: false });
+    if (error) throw new Error(`${table}: ${error.message}`);
+    return [table, data || []];
+  }));
+  return Object.fromEntries(entries);
 }
 async function resolveCloudArchive() {
   if (!cloudClient || !cloudUser) return;
   updateCloudIndicator("Syncing private archive…");
-  const { data, error } = await cloudClient.from(CLOUD_TABLE).select("data, updated_at").eq("user_id", cloudUser.id).maybeSingle();
-  if (error) {
-    updateAuthStatus(`Signed in. Run the Supabase setup SQL to enable syncing: ${error.message}`, true);
+  let rows;
+  try {
+    rows = await fetchNormalizedCloudRows();
+  } catch (error) {
+    updateAuthStatus(`Signed in. Run the updated Supabase setup SQL to enable syncing: ${error.message}`, true);
     updateCloudIndicator("Signed in · sync setup needed");
     finishCloudStartup();
     return;
   }
-  if (!data) {
+  let hasRemoteData = CLOUD_TABLES.some(table => (rows[table] || []).length);
+  if (!hasRemoteData) {
     await uploadLocalArchive();
     finishCloudStartup();
     return;
   }
-  const lastRemoteAt = localStorage.getItem(CLOUD_LAST_REMOTE_KEY);
-  if (hasLocalArchiveData() && lastRemoteAt !== data.updated_at) {
-    chooseArchive(data);
-    return;
+  const localChanged = Date.parse(localStorage.getItem(CLOUD_LOCAL_CHANGE_KEY) || 0);
+  const lastRemote = Date.parse(localStorage.getItem(CLOUD_LAST_REMOTE_KEY) || 0);
+  if (lastRemote && localChanged > lastRemote) {
+    await uploadLocalArchive();
+    rows = await fetchNormalizedCloudRows();
+    hasRemoteData = true;
   }
-  applyCloudArchive(data.data || {});
-  nativeStorageSetItem.call(localStorage, CLOUD_LAST_REMOTE_KEY, data.updated_at);
-  nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, data.updated_at);
+  applyNormalizedCloudRows(rows);
+  const latest = Math.max(...CLOUD_TABLES.flatMap(table => (rows[table] || []).map(row => Date.parse(row.updated_at) || 0)));
+  const remoteAt = new Date(latest || Date.now()).toISOString();
+  nativeStorageSetItem.call(localStorage, CLOUD_LAST_REMOTE_KEY, remoteAt);
+  nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, remoteAt);
   refreshRuntimeFromStorage();
   updateCloudIndicator("Private sync complete");
   finishCloudStartup();
+}
+async function refreshFromCloudIfSafe() {
+  if (!cloudClient || !cloudUser || cloudApplying || document.hidden) return;
+  clearTimeout(cloudSyncTimer);
+  try {
+    const rows = await fetchNormalizedCloudRows();
+    if (!CLOUD_TABLES.some(table => (rows[table] || []).length)) return;
+    applyNormalizedCloudRows(rows);
+    refreshRuntimeFromStorage();
+    updateCloudIndicator("Private sync refreshed");
+  } catch (error) {
+    console.warn("Cloud refresh deferred:", error);
+  }
 }
 async function handleAuth(mode) {
   const username = document.getElementById("authUsername").value.trim();
@@ -229,23 +323,6 @@ async function initialiseCloudAuth() {
     handleAuth("signin");
   });
   document.getElementById("authCreateAccount").addEventListener("click", () => handleAuth("create"));
-  document.getElementById("syncUseCloud").addEventListener("click", () => {
-    if (!pendingCloudArchive) return;
-    applyCloudArchive(pendingCloudArchive.data || {});
-    nativeStorageSetItem.call(localStorage, CLOUD_LAST_REMOTE_KEY, pendingCloudArchive.updated_at);
-    nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, pendingCloudArchive.updated_at);
-    pendingCloudArchive = null;
-    document.getElementById("syncChoiceModal").hidden = true;
-    refreshRuntimeFromStorage();
-    updateCloudIndicator("Cloud archive restored");
-    finishCloudStartup();
-  });
-  document.getElementById("syncUseDevice").addEventListener("click", async () => {
-    pendingCloudArchive = null;
-    document.getElementById("syncChoiceModal").hidden = true;
-    await uploadLocalArchive();
-    finishCloudStartup();
-  });
   const { data, error } = await cloudClient.auth.getSession();
   if (error) {
     updateAuthStatus(error.message, true);
@@ -271,13 +348,22 @@ async function signOutOfPrivateArchive() {
   }
   cloudUser = null;
   cloudStartupComplete = false;
-  pendingCloudArchive = null;
   activeMandatoryModal = null;
   document.querySelectorAll(".checkin-modal, .atelier-modal, .level-modal").forEach(modal => { modal.hidden = true; });
   document.getElementById("authPassword").value = "";
   updateAuthStatus("Signed out. Enter your username and password to reopen the private archive.");
   showAuthGate();
 }
+window.addEventListener("online", () => {
+  if (!cloudUser) return;
+  const localChanged = Date.parse(localStorage.getItem(CLOUD_LOCAL_CHANGE_KEY) || 0);
+  const lastRemote = Date.parse(localStorage.getItem(CLOUD_LAST_REMOTE_KEY) || 0);
+  if (localChanged > lastRemote) uploadLocalArchive().then(refreshFromCloudIfSafe);
+  else refreshFromCloudIfSafe();
+});
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && cloudUser) refreshFromCloudIfSafe();
+});
 
 function applyTimeTheme() {
   const now = new Date();
