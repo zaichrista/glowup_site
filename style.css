@@ -3896,3 +3896,65 @@ body.time-night.mode-account .account-status-card .secondary-btn:hover {
     min-width: 0;
   }
 }
+
+/* Synced princess portrait: always the right-most header control. */
+.site-header {
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+}
+.header-profile {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  overflow: hidden;
+  justify-self: end;
+  padding: 0;
+  border: 2px solid color-mix(in srgb, var(--gold) 70%, var(--pearl));
+  border-radius: 50%;
+  background: linear-gradient(145deg, var(--blush), var(--champagne));
+  color: var(--oxblood);
+  box-shadow: 0 8px 24px var(--aura), 0 0 0 3px color-mix(in srgb, var(--pearl) 72%, transparent);
+  transition: transform .35s var(--ease), box-shadow .35s var(--ease);
+}
+.header-profile:hover,
+.header-profile:focus-visible {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 12px 30px var(--aura), 0 0 0 4px color-mix(in srgb, var(--pearl) 82%, transparent);
+}
+.header-profile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.header-profile span {
+  font: 700 23px/1 "Cormorant Garamond", serif;
+}
+body.time-night .header-profile {
+  border-color: var(--gold);
+  color: var(--pearl);
+  box-shadow: 0 8px 24px rgba(0,0,0,.34), 0 0 0 3px rgba(255,242,237,.1);
+}
+
+@media (max-width: 1450px) {
+  .site-header {
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .site-header {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center;
+  }
+  .mode-switcher {
+    grid-column: 1;
+    min-width: 0;
+  }
+  .header-profile {
+    grid-column: 2;
+    width: 42px;
+    height: 42px;
+  }
+}

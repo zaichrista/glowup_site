@@ -36,6 +36,7 @@ const SUPABASE_URL = "https://xoxmhnhfmkgzaxqxiavo.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_uGE3D8WW69Kma90w8qJoSw_iC9soT99";
 const CLOUD_LAST_REMOTE_KEY = "glowCloudLastRemoteAt";
 const CLOUD_LOCAL_CHANGE_KEY = "glowCloudLocalChangedAt";
+const CLOUD_PENDING_UPLOAD_KEY = "glowCloudPendingUpload";
 const CLOUD_USERNAME_KEY = "glowCloudUsername";
 const CLOUD_TABLES = [
   "profiles", "glow_completions", "glow_checkins", "evening_reflections",
@@ -57,23 +58,25 @@ let cloudUser = null;
 let cloudApplying = false;
 let cloudSyncTimer = null;
 let cloudStartupComplete = false;
+let accountProfileDraft = null;
 const nativeStorageSetItem = Storage.prototype.setItem;
 const nativeStorageRemoveItem = Storage.prototype.removeItem;
 
 function isCloudSyncKey(key) { return CLOUD_SYNC_KEYS.includes(String(key)); }
 function markLocalCloudChange() {
   nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, new Date().toISOString());
+  nativeStorageSetItem.call(localStorage, CLOUD_PENDING_UPLOAD_KEY, "true");
 }
 Storage.prototype.setItem = function patchedStorageSetItem(key, value) {
   nativeStorageSetItem.call(this, key, value);
-  if (this === localStorage && isCloudSyncKey(key) && !cloudApplying) {
+  if (this === localStorage && isCloudSyncKey(key) && !cloudApplying && cloudStartupComplete) {
     markLocalCloudChange();
     scheduleCloudUpload();
   }
 };
 Storage.prototype.removeItem = function patchedStorageRemoveItem(key) {
   nativeStorageRemoveItem.call(this, key);
-  if (this === localStorage && isCloudSyncKey(key) && !cloudApplying) {
+  if (this === localStorage && isCloudSyncKey(key) && !cloudApplying && cloudStartupComplete) {
     markLocalCloudChange();
     scheduleCloudUpload();
   }
@@ -82,6 +85,13 @@ Storage.prototype.removeItem = function patchedStorageRemoveItem(key) {
 function usernameEmail(username) {
   const safe = username.toLowerCase().trim().replace(/[^a-z0-9._-]/g, "-").replace(/^-+|-+$/g, "");
   return safe ? `${safe}@users.glowup.app` : "";
+}
+function withTimeout(promise, milliseconds, message) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), milliseconds);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timeoutId));
 }
 function rowPayload(externalId, payload, extra = {}) {
   return { user_id: cloudUser.id, external_id: String(externalId), payload, updated_at: new Date().toISOString(), ...extra };
@@ -105,7 +115,7 @@ function normalizedLocalRows() {
     modeMigration: localStorage.getItem(MODE_MIGRATION_KEY),
     calendarScheduleOverrides: loadRecords(CALENDAR_SCHEDULE_OVERRIDES_KEY),
     calendarItemCompletions: loadRecords(CALENDAR_COMPLETIONS_KEY),
-    account: loadRecords(PROFILE_CACHE_KEY)
+    account: accountProfileDraft || loadRecords(PROFILE_CACHE_KEY)
   };
   return {
     profiles: [{ user_id: cloudUser.id, username: profilePayload.account?.username || localStorage.getItem(CLOUD_USERNAME_KEY) || cloudUser.user_metadata?.username || "", payload: profilePayload, updated_at: new Date().toISOString() }],
@@ -137,7 +147,15 @@ function applyNormalizedCloudRows(rows = {}) {
     blueState.days[row.date_key].checked[row.task_id] = true;
   });
   cloudApplying = true;
-  const put = (key, value) => nativeStorageSetItem.call(localStorage, key, JSON.stringify(value));
+  const put = (key, value) => {
+    try {
+      nativeStorageSetItem.call(localStorage, key, JSON.stringify(value));
+      return true;
+    } catch (error) {
+      console.warn(`Could not cache ${key}; cloud data remains available:`, error);
+      return false;
+    }
+  };
   put(STORAGE_KEY, glowState);
   put(WORK_STATE_KEY, blueState);
   put(CHECKIN_KEY, Object.fromEntries((rows.glow_checkins || []).map(row => [row.external_id, row.payload])));
@@ -152,7 +170,8 @@ function applyNormalizedCloudRows(rows = {}) {
   put(HABIT_UPDATE_KEY, profile.habitUpdates || {});
   put(CALENDAR_SCHEDULE_OVERRIDES_KEY, profile.calendarScheduleOverrides || {});
   put(CALENDAR_COMPLETIONS_KEY, profile.calendarItemCompletions || {});
-  put(PROFILE_CACHE_KEY, profileAccount);
+  const profileCached = put(PROFILE_CACHE_KEY, profileAccount);
+  accountProfileDraft = profileCached ? null : profileAccount;
   if (profile.modeMigration) nativeStorageSetItem.call(localStorage, MODE_MIGRATION_KEY, profile.modeMigration);
   cloudApplying = false;
 }
@@ -188,6 +207,7 @@ async function uploadLocalArchive() {
   }
   nativeStorageSetItem.call(localStorage, CLOUD_LAST_REMOTE_KEY, updatedAt);
   nativeStorageSetItem.call(localStorage, CLOUD_LOCAL_CHANGE_KEY, updatedAt);
+  nativeStorageRemoveItem.call(localStorage, CLOUD_PENDING_UPLOAD_KEY);
   updateCloudIndicator("Private sync complete");
 }
 function updateCloudIndicator(message) {
@@ -239,11 +259,11 @@ function finishCloudStartup() {
   runDailyCheckinPriority();
 }
 async function fetchNormalizedCloudRows() {
-  const entries = await Promise.all(CLOUD_TABLES.map(async table => {
+  const entries = await withTimeout(Promise.all(CLOUD_TABLES.map(async table => {
     const { data, error } = await cloudClient.from(table).select("*").eq("user_id", cloudUser.id).order("updated_at", { ascending: false });
     if (error) throw new Error(`${table}: ${error.message}`);
     return [table, data || []];
-  }));
+  })), 18000, "Cloud sync took too long. Check your connection and reopen the archive.");
   return Object.fromEntries(entries);
 }
 async function resolveCloudArchive() {
@@ -264,9 +284,8 @@ async function resolveCloudArchive() {
     finishCloudStartup();
     return;
   }
-  const localChanged = Date.parse(localStorage.getItem(CLOUD_LOCAL_CHANGE_KEY) || 0);
-  const lastRemote = Date.parse(localStorage.getItem(CLOUD_LAST_REMOTE_KEY) || 0);
-  if (lastRemote && localChanged > lastRemote) {
+  if (localStorage.getItem(CLOUD_PENDING_UPLOAD_KEY) === "true") {
+    accountProfileDraft ||= rows.profiles?.[0]?.payload?.account || null;
     await uploadLocalArchive();
     rows = await fetchNormalizedCloudRows();
     hasRemoteData = true;
@@ -284,7 +303,12 @@ async function refreshFromCloudIfSafe() {
   if (!cloudClient || !cloudUser || cloudApplying || document.hidden) return;
   clearTimeout(cloudSyncTimer);
   try {
-    const rows = await fetchNormalizedCloudRows();
+    let rows = await fetchNormalizedCloudRows();
+    if (localStorage.getItem(CLOUD_PENDING_UPLOAD_KEY) === "true") {
+      accountProfileDraft ||= rows.profiles?.[0]?.payload?.account || null;
+      await uploadLocalArchive();
+      rows = await fetchNormalizedCloudRows();
+    }
     if (!CLOUD_TABLES.some(table => (rows[table] || []).length)) return;
     applyNormalizedCloudRows(rows);
     refreshRuntimeFromStorage();
@@ -301,47 +325,54 @@ async function handleAuth(mode) {
     updateAuthStatus("Use a username and a password of at least six characters.", true);
     return;
   }
-  updateAuthStatus(mode === "create" ? "Creating your private archive…" : "Opening your private archive…");
-  const response = mode === "create"
-    ? await cloudClient.auth.signUp({ email, password, options: { data: { username } } })
-    : await cloudClient.auth.signInWithPassword({ email, password });
-  if (response.error) {
-    updateAuthStatus(response.error.message, true);
-    return;
+  try {
+    updateAuthStatus(mode === "create" ? "Creating your private archive…" : "Opening your private archive…");
+    const response = await withTimeout(mode === "create"
+      ? cloudClient.auth.signUp({ email, password, options: { data: { username } } })
+      : cloudClient.auth.signInWithPassword({ email, password }), 18000, "Sign-in took too long. Check your connection and try again.");
+    if (response.error) {
+      updateAuthStatus(response.error.message, true);
+      return;
+    }
+    if (!response.data.session) {
+      updateAuthStatus("Account created, but Supabase email confirmation is enabled. Disable Confirm email in Supabase Auth settings, then sign in.", true);
+      return;
+    }
+    nativeStorageSetItem.call(localStorage, CLOUD_USERNAME_KEY, username);
+    cloudUser = response.data.user;
+    await resolveCloudArchive();
+  } catch (error) {
+    console.error("Sign-in error:", error);
+    updateAuthStatus(error.message || "Could not open the private archive. Please try again.", true);
   }
-  if (!response.data.session) {
-    updateAuthStatus("Account created, but Supabase email confirmation is enabled. Disable Confirm email in Supabase Auth settings, then sign in.", true);
-    return;
-  }
-  nativeStorageSetItem.call(localStorage, CLOUD_USERNAME_KEY, username);
-  cloudUser = response.data.user;
-  await resolveCloudArchive();
 }
 async function initialiseCloudAuth() {
-  if (!window.supabase?.createClient) {
-    updateAuthStatus("Could not reach the private sync service. Check your connection and reload.", true);
+  try {
+    if (!window.supabase?.createClient) {
+      updateAuthStatus("Could not reach the private sync service. Check your connection and reload.", true);
+      showAuthGate();
+      return;
+    }
+    cloudClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+    document.getElementById("authUsername").value = localStorage.getItem(CLOUD_USERNAME_KEY) || "";
+    document.getElementById("authForm").addEventListener("submit", event => {
+      event.preventDefault();
+      handleAuth("signin");
+    });
+    document.getElementById("authCreateAccount").addEventListener("click", () => handleAuth("create"));
+    const { data, error } = await withTimeout(cloudClient.auth.getSession(), 12000, "Sign-in check took too long. Check your connection and reload.");
+    if (error) throw error;
+    cloudUser = data.session?.user || null;
+    if (!cloudUser) {
+      showAuthGate();
+      return;
+    }
+    await resolveCloudArchive();
+  } catch (error) {
+    console.error("Private archive startup error:", error);
+    updateAuthStatus(`The private archive could not open: ${error.message || "Please reload and try again."}`, true);
     showAuthGate();
-    return;
   }
-  cloudClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-  document.getElementById("authUsername").value = localStorage.getItem(CLOUD_USERNAME_KEY) || "";
-  document.getElementById("authForm").addEventListener("submit", event => {
-    event.preventDefault();
-    handleAuth("signin");
-  });
-  document.getElementById("authCreateAccount").addEventListener("click", () => handleAuth("create"));
-  const { data, error } = await cloudClient.auth.getSession();
-  if (error) {
-    updateAuthStatus(error.message, true);
-    showAuthGate();
-    return;
-  }
-  cloudUser = data.session?.user || null;
-  if (!cloudUser) {
-    showAuthGate();
-    return;
-  }
-  await resolveCloudArchive();
 }
 async function signOutOfPrivateArchive() {
   if (!cloudClient) return;
@@ -363,9 +394,7 @@ async function signOutOfPrivateArchive() {
 }
 window.addEventListener("online", () => {
   if (!cloudUser) return;
-  const localChanged = Date.parse(localStorage.getItem(CLOUD_LOCAL_CHANGE_KEY) || 0);
-  const lastRemote = Date.parse(localStorage.getItem(CLOUD_LAST_REMOTE_KEY) || 0);
-  if (localChanged > lastRemote) uploadLocalArchive().then(refreshFromCloudIfSafe);
+  if (localStorage.getItem(CLOUD_PENDING_UPLOAD_KEY) === "true") uploadLocalArchive().then(refreshFromCloudIfSafe);
   else refreshFromCloudIfSafe();
 });
 document.addEventListener("visibilitychange", () => {
@@ -1888,24 +1917,55 @@ function clearModePieces(pieces) {
 function accountProfile() {
   const cached = loadRecords(PROFILE_CACHE_KEY);
   return {
-    username: cached.username || localStorage.getItem(CLOUD_USERNAME_KEY) || cloudUser?.user_metadata?.username || "Princess",
-    photo: cached.photo || "",
-    createdAt: cached.createdAt || cloudUser?.created_at || new Date().toISOString()
+    username: accountProfileDraft?.username || cached.username || localStorage.getItem(CLOUD_USERNAME_KEY) || cloudUser?.user_metadata?.username || "Princess",
+    photo: accountProfileDraft?.photo ?? cached.photo ?? "",
+    createdAt: accountProfileDraft?.createdAt || cached.createdAt || cloudUser?.created_at || new Date().toISOString()
   };
 }
-function saveAccountProfile(profile) {
-  localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+async function uploadAccountProfileNow(profile) {
+  if (!cloudClient || !cloudUser) return false;
+  const profileRow = normalizedLocalRows().profiles[0];
+  profileRow.username = profile.username;
+  profileRow.payload.account = profile;
+  const { error } = await cloudClient.from("profiles").upsert(profileRow, { onConflict: "user_id" });
+  if (error) throw error;
+  updateCloudIndicator("Princess profile synced");
+  return true;
+}
+async function saveAccountProfile(profile) {
+  accountProfileDraft = profile;
+  try {
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+  } catch (error) {
+    console.warn("Profile cache unavailable; continuing with cloud save:", error);
+  }
   renderAccount();
+  try {
+    await uploadAccountProfileNow(profile);
+    document.getElementById("accountSyncStatus").textContent = "Synced now";
+  } catch (error) {
+    console.error("Profile sync deferred:", error);
+    document.getElementById("accountSyncStatus").textContent = "Saved offline · sync pending";
+    showToast("Profile saved here. Cloud sync will retry when the archive reconnects.");
+  }
 }
 function renderAccount() {
   const profile = accountProfile();
   const image = document.getElementById("accountProfileImage");
   const initial = document.getElementById("accountProfileInitial");
+  const headerImage = document.getElementById("headerProfileImage");
+  const headerInitial = document.getElementById("headerProfileInitial");
   if (!image || !initial) return;
   image.hidden = !profile.photo;
   image.src = profile.photo || "";
   initial.hidden = !!profile.photo;
   initial.textContent = (profile.username || "P").trim().charAt(0).toUpperCase();
+  if (headerImage && headerInitial) {
+    headerImage.hidden = !profile.photo;
+    headerImage.src = profile.photo || "";
+    headerInitial.hidden = !!profile.photo;
+    headerInitial.textContent = (profile.username || "P").trim().charAt(0).toUpperCase();
+  }
   document.getElementById("accountDisplayName").textContent = profile.username;
   document.getElementById("accountUsername").value = profile.username;
   document.getElementById("accountLoginName").textContent = localStorage.getItem(CLOUD_USERNAME_KEY) || "Private";
@@ -1941,12 +2001,12 @@ function initialiseAccountMode() {
   const form = document.getElementById("accountSettingsForm");
   const photoInput = document.getElementById("accountPhotoInput");
   if (!form || !photoInput) return;
-  form.addEventListener("submit", event => {
+  form.addEventListener("submit", async event => {
     event.preventDefault();
     const profile = accountProfile();
     profile.username = form.elements.username.value.trim() || profile.username;
     profile.createdAt ||= new Date().toISOString();
-    saveAccountProfile(profile);
+    await saveAccountProfile(profile);
     showToast("Princess profile saved. The archive knows its owner.");
   });
   photoInput.addEventListener("change", async () => {
@@ -1960,20 +2020,21 @@ function initialiseAccountMode() {
     try {
       const profile = accountProfile();
       profile.photo = await compressProfileImage(file);
-      saveAccountProfile(profile);
+      await saveAccountProfile(profile);
       showToast("Portrait polished and privately synced.");
     } catch (error) {
       showToast(error.message);
     }
   });
-  document.getElementById("accountRemovePhoto").addEventListener("click", () => {
+  document.getElementById("accountRemovePhoto").addEventListener("click", async () => {
     const profile = accountProfile();
     profile.photo = "";
-    saveAccountProfile(profile);
+    await saveAccountProfile(profile);
     photoInput.value = "";
     showToast("Portrait removed. Mystery restored.");
   });
   document.getElementById("accountSignOutBtn").addEventListener("click", signOutOfPrivateArchive);
+  document.getElementById("headerProfileBtn")?.addEventListener("click", () => switchMode("account"));
   renderAccount();
 }
 function switchMode(mode) {
@@ -2142,6 +2203,8 @@ function releaseLoader() {
 // can show, do not let the decorative loader permanently block the website.
 setTimeout(() => {
   const visibleMandatoryModal = document.querySelector(".checkin-modal:not([hidden])");
+  const authGateOpen = !document.getElementById("authGate")?.hidden;
+  if (!cloudStartupComplete && !authGateOpen) return;
   if (!visibleMandatoryModal && loader && !loader.classList.contains("hide")) {
     loader.classList.add("hide");
   }

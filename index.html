@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Zai Glow-Up Command Centre</title>
   <meta name="description" content="An interactive daily glow-up dashboard for Zai: fitness, nutrition, posture, hair and life progress tracking." />
-  <link rel="stylesheet" href="style.css?v=20260607-account-buttons-6" />
+  <link rel="stylesheet" href="style.css?v=20260607-profile-sync-7" />
 </head>
 <body>
   <div class="cursor" aria-hidden="true"><span class="cursor-label"></span></div>
@@ -49,6 +49,10 @@
       <a href="#work-review">Review</a>
     </nav>
     <div class="availability" id="streakHeader">Streak 0</div>
+    <button class="header-profile" id="headerProfileBtn" type="button" aria-label="Open princess profile">
+      <img id="headerProfileImage" alt="" hidden />
+      <span id="headerProfileInitial">Z</span>
+    </button>
   </header>
 
   <main id="glowMode" class="mode-page mode-page--glow">
@@ -812,6 +816,6 @@
 
   <div class="toast" id="toast" aria-live="polite"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="script.js?v=20260607-account-buttons-6"></script>
+  <script src="script.js?v=20260607-profile-sync-7"></script>
 </body>
 </html>
