@@ -146,13 +146,13 @@ function refreshRuntimeFromStorage() {
 }
 function showAuthGate() {
   document.getElementById("authGate").hidden = false;
-  document.body.classList.add("modal-locked");
+  document.body.classList.add("modal-locked", "auth-open");
   document.getElementById("loader")?.classList.add("hide");
   setTimeout(() => document.getElementById("authUsername")?.focus(), 50);
 }
 function hideAuthGate() {
   document.getElementById("authGate").hidden = true;
-  document.body.classList.remove("modal-locked");
+  document.body.classList.remove("modal-locked", "auth-open");
 }
 function finishCloudStartup() {
   if (cloudStartupComplete) return;
